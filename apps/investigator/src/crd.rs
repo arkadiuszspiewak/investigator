@@ -78,6 +78,7 @@ pub struct InvestigationStatus {
     pub phase: Option<String>,
     pub job_name: Option<String>,
     pub message: Option<String>,
+    pub result: Option<String>,
     pub observed_generation: Option<i64>,
 }
 

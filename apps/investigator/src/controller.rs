@@ -4,13 +4,13 @@ use futures::StreamExt;
 use k8s_openapi::api::{
     batch::v1::Job,
     core::v1::{
-        Affinity, Container, EmptyDirVolumeSource, EnvVar, EnvVarSource, KeyToPath, PodSpec,
+        Affinity, Container, EmptyDirVolumeSource, EnvVar, EnvVarSource, KeyToPath, Pod, PodSpec,
         PodTemplateSpec, SecretKeySelector, SecretVolumeSource, Toleration, Volume, VolumeMount,
     },
 };
 use kube::{
     Api, Client, Resource, ResourceExt,
-    api::{DeleteParams, ObjectMeta, Patch, PatchParams, PostParams},
+    api::{DeleteParams, ListParams, ObjectMeta, Patch, PatchParams, PostParams},
     runtime::{
         controller::{Action, Controller},
         watcher,
@@ -85,11 +85,17 @@ async fn reconcile(
             "Pending"
         }
     };
+    let result = if matches!(phase, "Succeeded" | "Failed") {
+        agent_result(&context.client, &namespace, &job_name).await?
+    } else {
+        None
+    };
 
     let status = InvestigationStatus {
         phase: Some(phase.to_owned()),
         job_name: Some(job_name),
         message: None,
+        result,
         observed_generation: investigation.metadata.generation,
     };
     if investigation.status.as_ref() != Some(&status) {
@@ -104,6 +110,34 @@ async fn reconcile(
     }
 
     Ok(Action::requeue(Duration::from_secs(10)))
+}
+
+async fn agent_result(
+    client: &Client,
+    namespace: &str,
+    job_name: &str,
+) -> Result<Option<String>, ReconcileError> {
+    let pods = Api::<Pod>::namespaced(client.clone(), namespace);
+    let pods = pods
+        .list(&ListParams::default().labels(&format!("job-name={job_name}")))
+        .await?;
+    Ok(pods.items.iter().find_map(pod_result))
+}
+
+fn pod_result(pod: &Pod) -> Option<String> {
+    pod.status
+        .as_ref()?
+        .container_statuses
+        .as_ref()?
+        .iter()
+        .find(|status| status.name == "codex")?
+        .state
+        .as_ref()?
+        .terminated
+        .as_ref()?
+        .message
+        .clone()
+        .filter(|message| !message.is_empty())
 }
 
 fn job_is_owned_by(job: &Job, investigation: &Investigation) -> bool {
@@ -168,6 +202,8 @@ fn agent_job(investigation: &Investigation, name: String) -> Result<Job, Reconci
                             "exec".to_owned(),
                             "--approve-for-me".to_owned(),
                             "--skip-git-repo-check".to_owned(),
+                            "--output-last-message".to_owned(),
+                            "/dev/termination-log".to_owned(),
                             investigation.spec.query.clone(),
                         ]),
                         env: Some(vec![
@@ -390,6 +426,8 @@ mod tests {
                     "exec",
                     "--approve-for-me",
                     "--skip-git-repo-check",
+                    "--output-last-message",
+                    "/dev/termination-log",
                     "investigate",
                 ]
                 .map(str::to_owned)
@@ -422,5 +460,32 @@ mod tests {
 
         investigation.metadata.uid = Some("new-uid".to_owned());
         assert!(!job_is_owned_by(&job, &investigation));
+    }
+
+    #[test]
+    fn pod_result_reads_codex_termination_message() {
+        let pod: Pod = serde_json::from_value(json!({
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {"name": "test-agent"},
+            "spec": {"containers": [{"name": "codex", "image": "agent:test"}]},
+            "status": {
+                "containerStatuses": [{
+                    "name": "codex",
+                    "image": "agent:test",
+                    "imageID": "agent:test",
+                    "ready": false,
+                    "restartCount": 0,
+                    "state": {"terminated": {
+                        "exitCode": 0,
+                        "message": "Investigation complete.",
+                        "reason": "Completed"
+                    }}
+                }]
+            }
+        }))
+        .unwrap();
+
+        assert_eq!(pod_result(&pod).as_deref(), Some("Investigation complete."));
     }
 }

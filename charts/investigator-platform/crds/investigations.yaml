@@ -79,4 +79,5 @@ spec:
                 phase: {type: string}
                 jobName: {type: string}
                 message: {type: string}
+                result: {type: string}
                 observedGeneration: {type: integer, format: int64}
