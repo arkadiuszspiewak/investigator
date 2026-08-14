@@ -30,10 +30,11 @@ cargo run -p investigator -- crd
 cargo run -p investigator
 ```
 
-Build either image from the repository root:
+Build the controller, agent, or server image from the repository root:
 
 ```sh
 docker build -f docker/Dockerfile.investigator -t investigator:dev .
+docker build -f docker/Dockerfile.agent -t investigator-agent:dev .
 docker build -f docker/Dockerfile.server \
   --build-arg PACKAGE=kubernetes-mcp --build-arg BINARY=kubernetes-mcp \
   -t kubernetes-mcp:dev .
@@ -51,6 +52,22 @@ controller with no arguments.
 4. The controller creates an owned Job running `codex exec --full-auto <query>`.
 5. The agent receives MCP endpoints as `INVESTIGATOR_MCP_SERVERS`; its image
    must translate that JSON into Codex configuration.
+
+Create a Secret for one of the two supported Codex credential modes, then
+reference it from `spec.auth`:
+
+```sh
+kubectl -n investigations create secret generic openai-api-key \
+  --from-literal=api-key="$OPENAI_API_KEY"
+
+kubectl -n investigations create secret generic codex-auth \
+  --from-file=auth.json="$HOME/.codex/auth.json"
+```
+
+Use either `auth.apiKeySecretRef` or `auth.authJsonSecretRef`, never both. API
+keys are exposed to the runner as `OPENAI_API_KEY`. An `auth.json` is copied
+into an ephemeral, writable `CODEX_HOME`; the Kubernetes Secret remains
+read-only.
 
 The ServiceAccount named by `spec.serviceAccountName` is the investigation's
 security boundary. Do not use the controller ServiceAccount for agent Jobs.

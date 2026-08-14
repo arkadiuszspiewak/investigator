@@ -8,7 +8,11 @@ spec:
     Determine why checkout latency increased in the last 30 minutes. Correlate
     Kubernetes events, Prometheus metrics, and recent Argo CD changes. Report
     evidence and perform only safe, reversible remediation.
-  agentImage: ghcr.io/example/investigator-agent:latest
+  agentImage: ghcr.io/arkadiuszspiewak/investigator-agent:latest
+  auth:
+    apiKeySecretRef:
+      name: openai-api-key
+      key: api-key
   serviceAccountName: investigator-agent
   mcpServers:
     - name: kubernetes

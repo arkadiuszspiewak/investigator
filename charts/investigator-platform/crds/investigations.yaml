@@ -23,14 +23,32 @@ spec:
           properties:
             spec:
               type: object
-              required: [query]
+              required: [query, auth]
               properties:
                 query:
                   type: string
                   minLength: 1
                 agentImage:
                   type: string
-                  default: ghcr.io/example/investigator-agent:latest
+                  default: ghcr.io/arkadiuszspiewak/investigator-agent:latest
+                auth:
+                  type: object
+                  oneOf:
+                    - required: [apiKeySecretRef]
+                    - required: [authJsonSecretRef]
+                  properties:
+                    apiKeySecretRef:
+                      type: object
+                      required: [name, key]
+                      properties:
+                        name: {type: string, minLength: 1}
+                        key: {type: string, minLength: 1}
+                    authJsonSecretRef:
+                      type: object
+                      required: [name, key]
+                      properties:
+                        name: {type: string, minLength: 1}
+                        key: {type: string, minLength: 1}
                 serviceAccountName:
                   type: string
                   default: investigator-agent

@@ -21,6 +21,9 @@ pub struct InvestigationSpec {
     #[serde(default = "default_agent_image")]
     pub agent_image: String,
 
+    /// Credentials used by Codex. Exactly one credential source must be set.
+    pub auth: AgentAuth,
+
     /// MCP Streamable HTTP endpoints exposed to this investigation.
     #[serde(default)]
     pub mcp_servers: Vec<McpServer>,
@@ -28,6 +31,25 @@ pub struct InvestigationSpec {
     /// ServiceAccount used by the agent Job. Its RBAC defines the blast radius.
     #[serde(default = "default_service_account")]
     pub service_account_name: String,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentAuth {
+    /// A Secret key containing an OpenAI API key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api_key_secret_ref: Option<SecretKeyRef>,
+
+    /// A Secret key containing a Codex auth.json file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auth_json_secret_ref: Option<SecretKeyRef>,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SecretKeyRef {
+    pub name: String,
+    pub key: String,
 }
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
@@ -47,7 +69,7 @@ pub struct InvestigationStatus {
 }
 
 fn default_agent_image() -> String {
-    "ghcr.io/example/investigator-agent:latest".to_owned()
+    "ghcr.io/arkadiuszspiewak/investigator-agent:latest".to_owned()
 }
 
 fn default_service_account() -> String {
