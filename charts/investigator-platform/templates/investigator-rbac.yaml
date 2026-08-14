@@ -1,0 +1,33 @@
+{{- if and .Values.investigator.enabled .Values.investigator.rbac.create }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "investigator-platform.fullname" . }}-controller
+  labels:
+    {{- include "investigator-platform.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [investigator.openai.com]
+    resources: [investigations]
+    verbs: [get, list, watch]
+  - apiGroups: [investigator.openai.com]
+    resources: [investigations/status]
+    verbs: [get, patch, update]
+  - apiGroups: [batch]
+    resources: [jobs]
+    verbs: [get, list, watch, create, patch, update, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "investigator-platform.fullname" . }}-controller
+  labels:
+    {{- include "investigator-platform.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "investigator-platform.fullname" . }}-controller
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "investigator-platform.controllerServiceAccount" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

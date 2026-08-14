@@ -1,0 +1,137 @@
+nameOverride: ""
+fullnameOverride: ""
+
+investigator:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: ghcr.io/example/investigator
+    tag: ""
+    digest: ""
+    pullPolicy: IfNotPresent
+  imagePullSecrets: []
+  serviceAccount: {create: true, name: "", annotations: {}}
+  # For other Investigation namespaces, provision the same account there.
+  agentServiceAccount: {create: true, name: investigator-agent, annotations: {}}
+  podAnnotations: {}
+  podLabels: {}
+  env: []
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {cpu: 500m, memory: 256Mi}
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    fsGroup: 65532
+    seccompProfile: {type: RuntimeDefault}
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities: {drop: [ALL]}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  rbac:
+    create: true
+
+# Copy an entry to add a provider. Every enabled item renders independently.
+mcpServers:
+  kubernetes:
+    enabled: true
+    image: {repository: ghcr.io/example/kubernetes-mcp, tag: "", digest: ""}
+    replicas: 1
+    port: 8080
+    path: /mcp
+    stateless: true
+    env: []
+    serviceAccount: {create: true, name: "", annotations: {}}
+    rbac:
+      create: true
+      rules:
+        - apiGroups: [""]
+          resources: [namespaces, nodes, persistentvolumes, pods, events, services, endpoints, configmaps, persistentvolumeclaims, serviceaccounts]
+          verbs: [get, list, watch]
+        - apiGroups: [""]
+          resources: [pods/log]
+          verbs: [get]
+        - apiGroups: [apps]
+          resources: [deployments, statefulsets, daemonsets, replicasets, controllerrevisions]
+          verbs: [get, list, watch]
+        - apiGroups: [batch]
+          resources: [jobs, cronjobs]
+          verbs: [get, list, watch]
+        - apiGroups: [autoscaling]
+          resources: [horizontalpodautoscalers]
+          verbs: [get, list, watch]
+        - apiGroups: [networking.k8s.io]
+          resources: [ingresses, ingressclasses, networkpolicies]
+          verbs: [get, list, watch]
+        - apiGroups: [policy]
+          resources: [poddisruptionbudgets]
+          verbs: [get, list, watch]
+        - apiGroups: [apiextensions.k8s.io]
+          resources: [customresourcedefinitions]
+          verbs: [get, list, watch]
+        - apiGroups: [metrics.k8s.io]
+          resources: [pods, nodes]
+          verbs: [get, list]
+      extraRules: []
+    podSecurityContext: &serverPodSecurityContext
+      runAsNonRoot: true
+      runAsUser: 65532
+      runAsGroup: 65532
+      fsGroup: 65532
+      seccompProfile: {type: RuntimeDefault}
+    securityContext: &serverSecurityContext
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities: {drop: [ALL]}
+    resources: &serverResources
+      requests: {cpu: 50m, memory: 64Mi}
+      limits: {cpu: 500m, memory: 256Mi}
+    health: &serverHealth
+      livenessProbe:
+        tcpSocket: {port: 8080}
+        initialDelaySeconds: 5
+        periodSeconds: 10
+      readinessProbe:
+        tcpSocket: {port: 8080}
+        initialDelaySeconds: 2
+        periodSeconds: 5
+    extraLabels: {}
+    extraAnnotations: {}
+
+  prometheus:
+    enabled: false
+    image: {repository: ghcr.io/example/prometheus-mcp, tag: "", digest: ""}
+    replicas: 1
+    port: 8080
+    path: /mcp
+    stateless: true
+    env: []
+    serviceAccount: {create: true, name: "", annotations: {}}
+    rbac: {create: false, rules: [], extraRules: []}
+    podSecurityContext: *serverPodSecurityContext
+    securityContext: *serverSecurityContext
+    resources: *serverResources
+    health: *serverHealth
+    extraLabels: {}
+    extraAnnotations: {}
+
+  argo:
+    enabled: false
+    image: {repository: ghcr.io/example/argo-mcp, tag: "", digest: ""}
+    replicas: 1
+    port: 8080
+    path: /mcp
+    stateless: true
+    env: []
+    serviceAccount: {create: true, name: "", annotations: {}}
+    rbac: {create: false, rules: [], extraRules: []}
+    podSecurityContext: *serverPodSecurityContext
+    securityContext: *serverSecurityContext
+    resources: *serverResources
+    health: *serverHealth
+    extraLabels: {}
+    extraAnnotations: {}

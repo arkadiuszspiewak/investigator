@@ -1,0 +1,19 @@
+# syntax=docker/dockerfile:1
+# Shared by every Rust MCP server. PACKAGE is the Cargo package and BINARY is
+# the resulting executable name; both may differ when a package defines bins.
+FROM rust:1.97.1-bookworm AS builder
+WORKDIR /src
+ARG PACKAGE
+COPY Cargo.toml Cargo.lock ./
+COPY apps ./apps
+COPY crates ./crates
+COPY servers ./servers
+RUN test -n "${PACKAGE}" && cargo build --locked --release --package "${PACKAGE}"
+
+FROM gcr.io/distroless/cc-debian12:nonroot
+ARG BINARY
+COPY --from=builder --chown=65532:65532 /src/target/release/${BINARY} /usr/local/bin/mcp-server
+USER 65532:65532
+EXPOSE 8080
+ENTRYPOINT ["/usr/local/bin/mcp-server"]
+CMD ["--http"]

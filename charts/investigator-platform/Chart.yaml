@@ -1,0 +1,9 @@
+apiVersion: v2
+name: investigator-platform
+description: Codex investigator controller and independently configurable MCP servers
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+annotations:
+  artifacthub.io/prerelease: "true"
+  operator.framework: mcp-lifecycle-operator

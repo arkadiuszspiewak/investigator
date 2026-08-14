@@ -1,0 +1,30 @@
+{{- $root := . -}}
+{{- range $name, $server := .Values.mcpServers }}
+{{- if and $server.enabled $server.rbac.create }}
+{{- $ctx := dict "root" $root "name" $name "server" $server -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "investigator-platform.serverName" $ctx }}
+  labels:
+    {{- include "investigator-platform.labels" $root | nindent 4 }}
+rules:
+  {{- toYaml (concat $server.rbac.rules $server.rbac.extraRules) | nindent 2 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "investigator-platform.serverName" $ctx }}
+  labels:
+    {{- include "investigator-platform.labels" $root | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "investigator-platform.serverName" $ctx }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "investigator-platform.serverServiceAccount" $ctx }}
+    namespace: {{ $root.Release.Namespace }}
+---
+{{- end }}
+{{- end }}

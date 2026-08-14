@@ -1,0 +1,11 @@
+Investigator and enabled MCP servers were installed.
+
+  kubectl get investigations -A
+  kubectl get mcpservers -n {{ .Release.Namespace }}
+
+Enabled MCP servers:
+{{- range $name, $server := .Values.mcpServers }}
+{{- if $server.enabled }}
+  - {{ $name }}
+{{- end }}
+{{- end }}

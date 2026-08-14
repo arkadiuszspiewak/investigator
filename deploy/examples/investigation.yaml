@@ -1,0 +1,19 @@
+apiVersion: investigator.openai.com/v1alpha1
+kind: Investigation
+metadata:
+  name: checkout-latency
+  namespace: investigations
+spec:
+  query: >-
+    Determine why checkout latency increased in the last 30 minutes. Correlate
+    Kubernetes events, Prometheus metrics, and recent Argo CD changes. Report
+    evidence and perform only safe, reversible remediation.
+  agentImage: ghcr.io/example/investigator-agent:latest
+  serviceAccountName: investigator-agent
+  mcpServers:
+    - name: kubernetes
+      url: http://investigator-investigator-platform-kubernetes.investigations.svc.cluster.local:8080/mcp
+    - name: prometheus
+      url: http://investigator-investigator-platform-prometheus.investigations.svc.cluster.local:8080/mcp
+    - name: argo
+      url: http://investigator-investigator-platform-argo.investigations.svc.cluster.local:8080/mcp

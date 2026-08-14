@@ -1,0 +1,40 @@
+name: Validate and release Helm chart
+
+on:
+  pull_request:
+    paths:
+      - charts/investigator-platform/**
+      - .github/workflows/release-helm.yml
+  push:
+    branches: [main]
+    tags: [chart-v*]
+    paths:
+      - charts/investigator-platform/**
+      - .github/workflows/release-helm.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  chart:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - name: Lint and render
+        run: |
+          helm lint charts/investigator-platform
+          helm template test charts/investigator-platform --namespace investigator-system >/dev/null
+      - name: Log in to GHCR
+        if: startsWith(github.ref, 'refs/tags/chart-v')
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io --username "${{ github.actor }}" --password-stdin
+      - name: Package and push
+        if: startsWith(github.ref, 'refs/tags/chart-v')
+        env:
+          CHART_VERSION: ${{ github.ref_name }}
+        run: |
+          version="${CHART_VERSION#chart-v}"
+          helm package charts/investigator-platform --version "$version" --app-version "$version" --destination dist
+          helm push "dist/investigator-platform-${version}.tgz" "oci://ghcr.io/${{ github.repository_owner }}/charts"

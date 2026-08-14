@@ -1,0 +1,11 @@
+[package]
+name = "mcp-runtime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+axum.workspace = true
+rmcp.workspace = true
+thiserror.workspace = true
+tokio.workspace = true

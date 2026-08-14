@@ -1,0 +1,70 @@
+{{- $root := . -}}
+{{- range $name, $server := .Values.mcpServers }}
+{{- if $server.enabled }}
+{{- $ctx := dict "root" $root "name" $name "server" $server -}}
+{{- if $server.serviceAccount.create }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "investigator-platform.serverServiceAccount" $ctx }}
+  labels:
+    {{- include "investigator-platform.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ printf "%s-mcp" $name }}
+  {{- with $server.serviceAccount.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+---
+{{- end }}
+apiVersion: mcp.x-k8s.io/v1alpha1
+kind: MCPServer
+metadata:
+  name: {{ include "investigator-platform.serverName" $ctx }}
+  labels:
+    {{- include "investigator-platform.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ printf "%s-mcp" $name }}
+spec:
+  {{- with $server.extraLabels }}
+  extraLabels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with $server.extraAnnotations }}
+  extraAnnotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  source:
+    type: ContainerImage
+    containerImage:
+      ref: {{ include "investigator-platform.image" (dict "root" $root "image" $server.image) | quote }}
+  config:
+    port: {{ $server.port }}
+    path: {{ $server.path | quote }}
+    env:
+      - name: MCP_BIND_ADDRESS
+        value: {{ printf "0.0.0.0:%v" $server.port | quote }}
+      - name: MCP_PATH
+        value: {{ $server.path | quote }}
+      - name: MCP_STATELESS
+        value: {{ $server.stateless | quote }}
+      - name: MCP_ALLOWED_HOSTS
+        value: {{ printf "%s,%s:%v,%s.%s,%s.%s.svc,%s.%s.svc.cluster.local" (include "investigator-platform.serverName" $ctx) (include "investigator-platform.serverName" $ctx) $server.port (include "investigator-platform.serverName" $ctx) $root.Release.Namespace (include "investigator-platform.serverName" $ctx) $root.Release.Namespace (include "investigator-platform.serverName" $ctx) $root.Release.Namespace | quote }}
+      {{- with $server.env }}
+      {{- toYaml . | nindent 6 }}
+      {{- end }}
+  runtime:
+    replicas: {{ $server.replicas }}
+    security:
+      serviceAccountName: {{ include "investigator-platform.serverServiceAccount" $ctx }}
+      podSecurityContext:
+        {{- toYaml $server.podSecurityContext | nindent 8 }}
+      securityContext:
+        {{- toYaml $server.securityContext | nindent 8 }}
+    resources:
+      {{- toYaml $server.resources | nindent 6 }}
+    health:
+      {{- toYaml $server.health | nindent 6 }}
+  mcp:
+    stateless: {{ $server.stateless }}
+---
+{{- end }}
+{{- end }}

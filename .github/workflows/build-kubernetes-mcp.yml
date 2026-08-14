@@ -1,0 +1,36 @@
+name: Build kubernetes-mcp
+
+on:
+  pull_request:
+    paths:
+      - servers/kubernetes-mcp/**
+      - crates/mcp-runtime/**
+      - Cargo.toml
+      - Cargo.lock
+      - docker/Dockerfile.server
+      - .github/workflows/_build-server.yml
+      - .github/workflows/build-kubernetes-mcp.yml
+  push:
+    branches: [main]
+    tags: [kubernetes-mcp-v*]
+    paths:
+      - servers/kubernetes-mcp/**
+      - crates/mcp-runtime/**
+      - Cargo.toml
+      - Cargo.lock
+      - docker/Dockerfile.server
+      - .github/workflows/_build-server.yml
+      - .github/workflows/build-kubernetes-mcp.yml
+  workflow_dispatch:
+
+jobs:
+  image:
+    uses: ./.github/workflows/_build-server.yml
+    permissions:
+      contents: read
+      packages: write
+    with:
+      package: kubernetes-mcp
+      binary: kubernetes-mcp
+      image: kubernetes-mcp
+    secrets: inherit

@@ -1,0 +1,50 @@
+# Architecture
+
+```text
+Investigation CR ──> investigator controller ──> one Codex Job
+                                                    │
+                    ┌───────────────────────────────┼──────────────┐
+                    ▼                               ▼              ▼
+              kubernetes-mcp                 prometheus-mcp    argo-mcp
+```
+
+- `investigator` is a Kubernetes controller, not an MCP server and not the LLM.
+  It converts desired state into Jobs and reports Job state on the CR.
+- The agent image contains Codex plus an entrypoint that consumes
+  `INVESTIGATOR_MCP_SERVERS`, configures Codex, and executes the query.
+- Each MCP server owns one integration and is independently versioned, secured,
+  scaled, and deployed.
+- `mcp-runtime` contains transport mechanics only. Provider clients and tool
+  schemas stay with their server.
+
+## Adding an MCP server
+
+Create `servers/<provider>-mcp` with its own manifest, binary, handler, and
+tools. Use `mcp_runtime::serve_http` for shared HTTP behavior. Add the crate to
+the workspace and deploy it independently. An Investigation opts into it by
+name and URL; no controller change is required.
+
+## Lifecycle and security
+
+The initial controller creates one owned Job, observes completion or failure,
+and publishes status. A production iteration should add explicit re-run and
+cancellation semantics, finalizers, conditions/timestamps, result persistence,
+timeouts, resource limits, and admission validation.
+
+The controller, MCP servers, and agent Jobs must use separate identities. The
+controller manages Investigations and Jobs. Each MCP server gets only its
+integration credentials. The Job's `spec.serviceAccountName` limits direct
+cluster actions. Queries and MCP URLs are ordinary API data and must not contain
+secrets; mount credentials from Secrets and restrict egress with NetworkPolicy.
+
+## Packaging and releases
+
+`charts/investigator-platform` is the only chart. Templates iterate over the
+`mcpServers` map, while every server retains an independent image and release
+cadence. `docker/Dockerfile.server` is the shared Rust server recipe;
+`docker/Dockerfile.investigator` is separate so the controller never inherits
+the MCP server's `--http` command.
+
+Each server directory has a small path-filtered workflow caller. All callers
+invoke `_build-server.yml`, keeping registry login, tagging, caching, and image
+construction consistent as the server list grows.

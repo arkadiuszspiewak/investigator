@@ -1,0 +1,59 @@
+{{- if .Values.investigator.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "investigator-platform.fullname" . }}
+  labels:
+    {{- include "investigator-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller
+spec:
+  replicas: {{ .Values.investigator.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "investigator-platform.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: controller
+  template:
+    metadata:
+      annotations:
+        {{- toYaml .Values.investigator.podAnnotations | nindent 8 }}
+      labels:
+        app.kubernetes.io/name: {{ include "investigator-platform.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: controller
+        {{- with .Values.investigator.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "investigator-platform.controllerServiceAccount" . }}
+      {{- with .Values.investigator.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.investigator.podSecurityContext | nindent 8 }}
+      containers:
+        - name: investigator
+          image: {{ include "investigator-platform.image" (dict "root" . "image" .Values.investigator.image) | quote }}
+          imagePullPolicy: {{ .Values.investigator.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.investigator.securityContext | nindent 12 }}
+          {{- with .Values.investigator.env }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.investigator.resources | nindent 12 }}
+      {{- with .Values.investigator.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.investigator.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.investigator.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
