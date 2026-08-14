@@ -43,7 +43,7 @@ jobs:
           tags: |
             type=sha,prefix=sha-
             type=ref,event=branch
-            type=ref,event=tag
+            type=semver,pattern={{version}},match=^investigator-v(.*)$
             type=ref,event=pr
       - uses: docker/build-push-action@v6
         with:
