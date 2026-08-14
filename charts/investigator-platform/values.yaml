@@ -125,7 +125,12 @@ mcpServers:
     port: 8080
     path: /mcp
     stateless: true
-    env: []
+    env:
+      - name: PROMETHEUS_URL
+        value: http://prometheus-operated.monitoring.svc.cluster.local:9090
+      # Optionally provide PROMETHEUS_BEARER_TOKEN with valueFrom.secretKeyRef.
+      - name: PROMETHEUS_TIMEOUT_SECONDS
+        value: "30"
     serviceAccount: {create: true, name: "", annotations: {}}
     rbac: {create: false, rules: [], extraRules: []}
     podSecurityContext: *serverPodSecurityContext

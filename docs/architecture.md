@@ -14,6 +14,8 @@ Investigation CR ──> investigator controller ──> one Codex Job
   `INVESTIGATOR_MCP_SERVERS`, configures Codex, and executes the query.
 - Each MCP server owns one integration and is independently versioned, secured,
   scaled, and deployed.
+- `prometheus-mcp` stays read-only and exposes only PromQL, metric/label
+  discovery, and scrape-target health through the Prometheus HTTP API.
 - `mcp-runtime` contains transport mechanics only. Provider clients and tool
   schemas stay with their server.
 

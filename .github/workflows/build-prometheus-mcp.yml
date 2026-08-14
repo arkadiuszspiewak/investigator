@@ -1,0 +1,36 @@
+name: Build prometheus-mcp
+
+on:
+  pull_request:
+    paths:
+      - servers/prometheus-mcp/**
+      - crates/mcp-runtime/**
+      - Cargo.toml
+      - Cargo.lock
+      - docker/Dockerfile.server
+      - .github/workflows/_build-server.yml
+      - .github/workflows/build-prometheus-mcp.yml
+  push:
+    branches: [main]
+    tags: [prometheus-mcp-v*]
+    paths:
+      - servers/prometheus-mcp/**
+      - crates/mcp-runtime/**
+      - Cargo.toml
+      - Cargo.lock
+      - docker/Dockerfile.server
+      - .github/workflows/_build-server.yml
+      - .github/workflows/build-prometheus-mcp.yml
+  workflow_dispatch:
+
+jobs:
+  image:
+    uses: ./.github/workflows/_build-server.yml
+    permissions:
+      contents: read
+      packages: write
+    with:
+      package: prometheus-mcp
+      binary: prometheus-mcp
+      image: prometheus-mcp
+    secrets: inherit
