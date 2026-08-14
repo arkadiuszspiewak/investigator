@@ -149,7 +149,10 @@ fn agent_job(investigation: &Investigation, name: String) -> Result<Job, Reconci
                         image: Some(investigation.spec.agent_image.clone()),
                         args: Some(vec![
                             "exec".to_owned(),
-                            "--full-auto".to_owned(),
+                            "--approve-for-me".to_owned(),
+                            "--sandbox".to_owned(),
+                            "workspace-write".to_owned(),
+                            "--skip-git-repo-check".to_owned(),
                             investigation.spec.query.clone(),
                         ]),
                         env: Some(vec![
@@ -365,5 +368,20 @@ mod tests {
         assert_eq!(pod.node_selector.unwrap()["workload"], "agent");
         assert!(pod.affinity.unwrap().node_affinity.is_some());
         assert_eq!(pod.tolerations.unwrap()[0].key.as_deref(), Some("agent"));
+        assert_eq!(
+            pod.containers[0].args.as_deref(),
+            Some(
+                [
+                    "exec",
+                    "--approve-for-me",
+                    "--sandbox",
+                    "workspace-write",
+                    "--skip-git-repo-check",
+                    "investigate",
+                ]
+                .map(str::to_owned)
+                .as_slice()
+            )
+        );
     }
 }

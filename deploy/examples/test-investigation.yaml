@@ -1,0 +1,31 @@
+apiVersion: investigator.openai.com/v1alpha1
+kind: Investigation
+metadata:
+  name: test-kubernetes-mcp
+  namespace: investigator
+spec:
+  query: >-
+    Use the Kubernetes MCP server to list the pods in the investigator
+    namespace. Summarize their readiness and report any unhealthy pods.
+    Do not make any changes.
+  agentImage: ghcr.io/arkadiuszspiewak/investigator-agent:latest
+  auth:
+    authJsonSecretRef:
+      name: codex-auth
+      key: auth.json
+  serviceAccountName: investigator-agent
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: rpi
+                operator: NotIn
+                values:
+                  - "true"
+          - matchExpressions:
+              - key: rpi
+                operator: DoesNotExist
+  mcpServers:
+    - name: kubernetes
+      url: http://investigator-investigator-platform-kubernetes.investigator.svc.cluster.local:8080/mcp
