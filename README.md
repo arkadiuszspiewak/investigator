@@ -45,12 +45,11 @@ controller with no arguments.
 
 ## Investigation flow
 
-1. Install the MCP Lifecycle Operator.
-2. Install `charts/investigator-platform`; it contains the Investigation CRD,
-   controller, and enabled MCP servers.
-3. Create an Investigation like `deploy/examples/investigation.yaml`.
-4. The controller creates an owned Job running `codex exec --full-auto <query>`.
-5. The agent receives MCP endpoints as `INVESTIGATOR_MCP_SERVERS`; its image
+1. Install `charts/investigator-platform`; it contains the Investigation CRD,
+   controller, and enabled MCP server Deployments and Services.
+2. Create an Investigation like `deploy/examples/investigation.yaml`.
+3. The controller creates an owned Job running `codex exec --full-auto <query>`.
+4. The agent receives MCP endpoints as `INVESTIGATOR_MCP_SERVERS`; its image
    must translate that JSON into Codex configuration.
 
 Create a Secret for one of the two supported Codex credential modes, then
@@ -88,3 +87,15 @@ Each provider has dedicated configuration under `mcpServers.<provider>`. Copy
 an entry and set `enabled: true` to add one without changing templates. Server
 images use thin path-filtered workflows that call the shared
 `_build-server.yml`; chart tags such as `chart-v0.2.0` publish Helm releases.
+
+When upgrading from an operator-backed chart release, delete the old
+`MCPServer` resources and wait for their owned Deployments and Services to be
+removed before upgrading. The chart deliberately retains the same Service
+names so existing Investigation URLs continue to work:
+
+```sh
+kubectl delete mcpservers.mcp.x-k8s.io \
+  --namespace investigations \
+  --selector app.kubernetes.io/instance=investigator \
+  --wait
+```

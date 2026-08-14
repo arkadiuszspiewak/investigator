@@ -39,7 +39,8 @@ investigator:
 mcpServers:
   kubernetes:
     enabled: true
-    image: {repository: ghcr.io/arkadiuszspiewak/kubernetes-mcp, tag: "", digest: ""}
+    image: {repository: ghcr.io/arkadiuszspiewak/kubernetes-mcp, tag: "", digest: "", pullPolicy: IfNotPresent}
+    imagePullSecrets: []
     replicas: 1
     port: 8080
     path: /mcp
@@ -107,7 +108,8 @@ mcpServers:
 
   prometheus:
     enabled: false
-    image: {repository: ghcr.io/arkadiuszspiewak/prometheus-mcp, tag: "", digest: ""}
+    image: {repository: ghcr.io/arkadiuszspiewak/prometheus-mcp, tag: "", digest: "", pullPolicy: IfNotPresent}
+    imagePullSecrets: []
     replicas: 1
     port: 8080
     path: /mcp
@@ -127,7 +129,8 @@ mcpServers:
 
   argo:
     enabled: false
-    image: {repository: ghcr.io/arkadiuszspiewak/argo-mcp, tag: "", digest: ""}
+    image: {repository: ghcr.io/arkadiuszspiewak/argo-mcp, tag: "", digest: "", pullPolicy: IfNotPresent}
+    imagePullSecrets: []
     replicas: 1
     port: 8080
     path: /mcp

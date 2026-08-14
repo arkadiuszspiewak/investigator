@@ -6,4 +6,3 @@ version: 0.1.0
 appVersion: "0.1.0"
 annotations:
   artifacthub.io/prerelease: "true"
-  operator.framework: mcp-lifecycle-operator

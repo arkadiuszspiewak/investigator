@@ -2,6 +2,9 @@
 {{- range $name, $server := .Values.mcpServers }}
 {{- if $server.enabled }}
 {{- $ctx := dict "root" $root "name" $name "server" $server -}}
+{{- $serverName := include "investigator-platform.serverName" $ctx -}}
+{{- $component := printf "%s-mcp" $name -}}
+{{- $extraLabels := omit $server.extraLabels "app.kubernetes.io/name" "app.kubernetes.io/instance" "app.kubernetes.io/component" -}}
 {{- if $server.serviceAccount.create }}
 apiVersion: v1
 kind: ServiceAccount
@@ -9,74 +12,126 @@ metadata:
   name: {{ include "investigator-platform.serverServiceAccount" $ctx }}
   labels:
     {{- include "investigator-platform.labels" $root | nindent 4 }}
-    app.kubernetes.io/component: {{ printf "%s-mcp" $name }}
+    app.kubernetes.io/component: {{ $component }}
   {{- with $server.serviceAccount.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 ---
 {{- end }}
-apiVersion: mcp.x-k8s.io/v1alpha1
-kind: MCPServer
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: {{ include "investigator-platform.serverName" $ctx }}
+  name: {{ $serverName }}
   labels:
     {{- include "investigator-platform.labels" $root | nindent 4 }}
-    app.kubernetes.io/component: {{ printf "%s-mcp" $name }}
-spec:
-  {{- with $server.extraLabels }}
-  extraLabels:
+    app.kubernetes.io/component: {{ $component }}
+    {{- with $extraLabels }}
     {{- toYaml . | nindent 4 }}
-  {{- end }}
+    {{- end }}
   {{- with $server.extraAnnotations }}
-  extraAnnotations:
+  annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
-  source:
-    type: ContainerImage
-    containerImage:
-      ref: {{ include "investigator-platform.image" (dict "root" $root "image" $server.image) | quote }}
-  config:
-    port: {{ $server.port }}
-    path: {{ $server.path | quote }}
-    env:
-      - name: MCP_BIND_ADDRESS
-        value: {{ printf "0.0.0.0:%v" $server.port | quote }}
-      - name: MCP_PATH
-        value: {{ $server.path | quote }}
-      - name: MCP_STATELESS
-        value: {{ $server.stateless | quote }}
-      - name: MCP_ALLOWED_HOSTS
-        value: {{ printf "%s,%s:%v,%s.%s,%s.%s.svc,%s.%s.svc.cluster.local" (include "investigator-platform.serverName" $ctx) (include "investigator-platform.serverName" $ctx) $server.port (include "investigator-platform.serverName" $ctx) $root.Release.Namespace (include "investigator-platform.serverName" $ctx) $root.Release.Namespace (include "investigator-platform.serverName" $ctx) $root.Release.Namespace | quote }}
-      {{- with $server.env }}
-      {{- toYaml . | nindent 6 }}
+spec:
+  replicas: {{ $server.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "investigator-platform.name" $root }}
+      app.kubernetes.io/instance: {{ $root.Release.Name }}
+      app.kubernetes.io/component: {{ $component }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "investigator-platform.name" $root }}
+        app.kubernetes.io/instance: {{ $root.Release.Name }}
+        app.kubernetes.io/component: {{ $component }}
+        {{- with $extraLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with $server.extraAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
       {{- end }}
-  runtime:
-    replicas: {{ $server.replicas }}
-    security:
+    spec:
       serviceAccountName: {{ include "investigator-platform.serverServiceAccount" $ctx }}
-      podSecurityContext:
-        {{- toYaml $server.podSecurityContext | nindent 8 }}
+      {{- with $server.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       securityContext:
-        {{- toYaml $server.securityContext | nindent 8 }}
-    resources:
-      {{- toYaml $server.resources | nindent 6 }}
-    health:
-      {{- toYaml $server.health | nindent 6 }}
-    {{- with $server.nodeSelector }}
-    nodeSelector:
-      {{- toYaml . | nindent 6 }}
+        {{- toYaml $server.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ $name }}-mcp
+          image: {{ include "investigator-platform.image" (dict "root" $root "image" $server.image) | quote }}
+          imagePullPolicy: {{ $server.image.pullPolicy }}
+          securityContext:
+            {{- toYaml $server.securityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ $server.port }}
+              protocol: TCP
+          env:
+            - name: MCP_BIND_ADDRESS
+              value: {{ printf "0.0.0.0:%v" $server.port | quote }}
+            - name: MCP_PATH
+              value: {{ $server.path | quote }}
+            - name: MCP_STATELESS
+              value: {{ $server.stateless | quote }}
+            - name: MCP_ALLOWED_HOSTS
+              value: {{ printf "%s,%s:%v,%s.%s,%s.%s.svc,%s.%s.svc.cluster.local" $serverName $serverName $server.port $serverName $root.Release.Namespace $serverName $root.Release.Namespace $serverName $root.Release.Namespace | quote }}
+            {{- with $server.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          resources:
+            {{- toYaml $server.resources | nindent 12 }}
+          {{- with $server.health.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $server.health.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with $server.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $server.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $server.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $serverName }}
+  labels:
+    {{- include "investigator-platform.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+    {{- with $extraLabels }}
+    {{- toYaml . | nindent 4 }}
     {{- end }}
-    {{- with $server.affinity }}
-    affinity:
-      {{- toYaml . | nindent 6 }}
-    {{- end }}
-    {{- with $server.tolerations }}
-    tolerations:
-      {{- toYaml . | nindent 6 }}
-    {{- end }}
-  mcp:
-    stateless: {{ $server.stateless }}
+  {{- with $server.extraAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: ClusterIP
+  sessionAffinity: {{ ternary "None" "ClientIP" $server.stateless }}
+  selector:
+    app.kubernetes.io/name: {{ include "investigator-platform.name" $root }}
+    app.kubernetes.io/instance: {{ $root.Release.Name }}
+    app.kubernetes.io/component: {{ $component }}
+  ports:
+    - name: http
+      port: {{ $server.port }}
+      targetPort: http
+      protocol: TCP
 ---
 {{- end }}
 {{- end }}
