@@ -8,7 +8,9 @@ investigator:
     repository: ghcr.io/arkadiuszspiewak/investigator
     tag: ""
     digest: ""
-    pullPolicy: IfNotPresent
+    # Always is required for mutable tags such as main. Override to
+    # IfNotPresent when using an immutable version tag or digest.
+    pullPolicy: Always
   imagePullSecrets: []
   serviceAccount: {create: true, name: "", annotations: {}}
   # For other Investigation namespaces, provision the same account there.

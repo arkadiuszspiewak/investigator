@@ -10,7 +10,7 @@ use k8s_openapi::api::{
 };
 use kube::{
     Api, Client, Resource, ResourceExt,
-    api::{ObjectMeta, Patch, PatchParams, PostParams},
+    api::{DeleteParams, ObjectMeta, Patch, PatchParams, PostParams},
     runtime::{
         controller::{Action, Controller},
         watcher,
@@ -64,7 +64,15 @@ async fn reconcile(
     let job_name = format!("{}-agent", investigation.name_any());
     let jobs = Api::<Job>::namespaced(context.client.clone(), &namespace);
 
-    let phase = match jobs.get_opt(&job_name).await? {
+    let existing_job = jobs.get_opt(&job_name).await?;
+    if let Some(job) = existing_job.as_ref()
+        && !job_is_owned_by(job, &investigation)
+    {
+        jobs.delete(&job_name, &DeleteParams::default()).await?;
+        return Ok(Action::requeue(Duration::from_secs(1)));
+    }
+
+    let phase = match existing_job {
         Some(job) if job.status.as_ref().and_then(|s| s.succeeded).unwrap_or(0) > 0 => "Succeeded",
         Some(job) if job.status.as_ref().and_then(|s| s.failed).unwrap_or(0) > 0 => "Failed",
         Some(_) => "Running",
@@ -96,6 +104,15 @@ async fn reconcile(
     }
 
     Ok(Action::requeue(Duration::from_secs(10)))
+}
+
+fn job_is_owned_by(job: &Job, investigation: &Investigation) -> bool {
+    investigation.metadata.uid.as_ref().is_some_and(|uid| {
+        job.metadata
+            .owner_references
+            .as_ref()
+            .is_some_and(|owners| owners.iter().any(|owner| owner.uid == *uid))
+    })
 }
 
 fn agent_job(investigation: &Investigation, name: String) -> Result<Job, ReconcileError> {
@@ -150,8 +167,6 @@ fn agent_job(investigation: &Investigation, name: String) -> Result<Job, Reconci
                         args: Some(vec![
                             "exec".to_owned(),
                             "--approve-for-me".to_owned(),
-                            "--sandbox".to_owned(),
-                            "workspace-write".to_owned(),
                             "--skip-git-repo-check".to_owned(),
                             investigation.spec.query.clone(),
                         ]),
@@ -374,8 +389,6 @@ mod tests {
                 [
                     "exec",
                     "--approve-for-me",
-                    "--sandbox",
-                    "workspace-write",
                     "--skip-git-repo-check",
                     "investigate",
                 ]
@@ -383,5 +396,31 @@ mod tests {
                 .as_slice()
             )
         );
+    }
+
+    #[test]
+    fn job_owner_must_match_current_investigation_uid() {
+        let mut investigation = Investigation::new(
+            "test",
+            InvestigationSpec {
+                query: "investigate".to_owned(),
+                agent_image: "agent:test".to_owned(),
+                auth: AgentAuth {
+                    api_key_secret_ref: Some(secret("openai", "api-key")),
+                    auth_json_secret_ref: None,
+                },
+                mcp_servers: vec![],
+                service_account_name: "agent".to_owned(),
+                node_selector: BTreeMap::new(),
+                affinity: None,
+                tolerations: vec![],
+            },
+        );
+        investigation.metadata.uid = Some("old-uid".to_owned());
+        let job = agent_job(&investigation, "test-agent".to_owned()).unwrap();
+        assert!(job_is_owned_by(&job, &investigation));
+
+        investigation.metadata.uid = Some("new-uid".to_owned());
+        assert!(!job_is_owned_by(&job, &investigation));
     }
 }
