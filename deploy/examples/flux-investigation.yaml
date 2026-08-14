@@ -5,7 +5,7 @@ metadata:
   namespace: investigator
 spec:
   query: >-
-    Use the Kubernetes MCP server to list the pods in the flux-system namespace
+    Use the Kubernetes MCP and Prometheus MCP servers to list the pods in the flux-system namespace
     Analize logs, find any abnormal behaviours, Stuck deployment, bad helm charts etc.
     Check overall GitOps health of cluster.
   agentImage: ghcr.io/arkadiuszspiewak/investigator-agent:latest
@@ -29,3 +29,5 @@ spec:
   mcpServers:
     - name: kubernetes
       url: http://investigator-investigator-platform-kubernetes.investigator.svc.cluster.local:8080/mcp
+    - name: prometheus
+      url: http://investigator-investigator-platform-prometheus.investigator.svc.cluster.local:8080/mcp

@@ -66,7 +66,7 @@ async fn reconcile(
 
     let existing_job = jobs.get_opt(&job_name).await?;
     if let Some(job) = existing_job.as_ref()
-        && !job_is_owned_by(job, &investigation)
+        && (!job_is_owned_by(job, &investigation) || investigation_spec_changed(&investigation))
     {
         jobs.delete(&job_name, &DeleteParams::default()).await?;
         return Ok(Action::requeue(Duration::from_secs(1)));
@@ -138,6 +138,15 @@ fn pod_result(pod: &Pod) -> Option<String> {
         .message
         .clone()
         .filter(|message| !message.is_empty())
+}
+
+fn investigation_spec_changed(investigation: &Investigation) -> bool {
+    investigation.status.is_some()
+        && investigation
+            .status
+            .as_ref()
+            .and_then(|status| status.observed_generation)
+            != investigation.metadata.generation
 }
 
 fn job_is_owned_by(job: &Job, investigation: &Investigation) -> bool {
@@ -460,6 +469,35 @@ mod tests {
 
         investigation.metadata.uid = Some("new-uid".to_owned());
         assert!(!job_is_owned_by(&job, &investigation));
+    }
+
+    #[test]
+    fn detects_investigation_spec_generation_changes() {
+        let mut investigation = Investigation::new(
+            "test",
+            InvestigationSpec {
+                query: "investigate".to_owned(),
+                agent_image: "agent:test".to_owned(),
+                auth: AgentAuth {
+                    api_key_secret_ref: Some(secret("openai", "api-key")),
+                    auth_json_secret_ref: None,
+                },
+                mcp_servers: vec![],
+                service_account_name: "agent".to_owned(),
+                node_selector: BTreeMap::new(),
+                affinity: None,
+                tolerations: vec![],
+            },
+        );
+        investigation.metadata.generation = Some(2);
+        investigation.status = Some(InvestigationStatus {
+            observed_generation: Some(1),
+            ..Default::default()
+        });
+
+        assert!(investigation_spec_changed(&investigation));
+        investigation.status.as_mut().unwrap().observed_generation = Some(2);
+        assert!(!investigation_spec_changed(&investigation));
     }
 
     #[test]
