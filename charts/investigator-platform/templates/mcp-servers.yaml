@@ -63,6 +63,18 @@ spec:
       {{- toYaml $server.resources | nindent 6 }}
     health:
       {{- toYaml $server.health | nindent 6 }}
+    {{- with $server.nodeSelector }}
+    nodeSelector:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- with $server.affinity }}
+    affinity:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- with $server.tolerations }}
+    tolerations:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
   mcp:
     stateless: {{ $server.stateless }}
 ---

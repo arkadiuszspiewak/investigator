@@ -4,8 +4,8 @@ use futures::StreamExt;
 use k8s_openapi::api::{
     batch::v1::Job,
     core::v1::{
-        Container, EmptyDirVolumeSource, EnvVar, EnvVarSource, KeyToPath, PodSpec, PodTemplateSpec,
-        SecretKeySelector, SecretVolumeSource, Volume, VolumeMount,
+        Affinity, Container, EmptyDirVolumeSource, EnvVar, EnvVarSource, KeyToPath, PodSpec,
+        PodTemplateSpec, SecretKeySelector, SecretVolumeSource, Toleration, Volume, VolumeMount,
     },
 };
 use kube::{
@@ -34,7 +34,7 @@ enum ReconcileError {
     MissingNamespace,
     #[error("Investigation is missing its owner reference data")]
     MissingOwnerReference,
-    #[error("could not serialize MCP server configuration: {0}")]
+    #[error("could not serialize or deserialize pod configuration: {0}")]
     Serialization(#[from] serde_json::Error),
     #[error("exactly one of auth.apiKeySecretRef or auth.authJsonSecretRef must be set")]
     InvalidAuth,
@@ -105,6 +105,19 @@ fn agent_job(investigation: &Investigation, name: String) -> Result<Job, Reconci
     let mcp_servers = serde_json::to_string(&investigation.spec.mcp_servers)?;
     let (auth_env, init_containers, volumes, volume_mounts) =
         agent_auth(&investigation.spec.auth, &investigation.spec.agent_image)?;
+    let affinity = investigation
+        .spec
+        .affinity
+        .clone()
+        .map(serde_json::from_value::<Affinity>)
+        .transpose()?;
+    let tolerations = investigation
+        .spec
+        .tolerations
+        .iter()
+        .cloned()
+        .map(serde_json::from_value::<Toleration>)
+        .collect::<Result<Vec<_>, _>>()?;
     Ok(Job {
         metadata: ObjectMeta {
             name: Some(name),
@@ -127,6 +140,10 @@ fn agent_job(investigation: &Investigation, name: String) -> Result<Job, Reconci
                 spec: Some(PodSpec {
                     restart_policy: Some("Never".to_owned()),
                     service_account_name: Some(investigation.spec.service_account_name.clone()),
+                    node_selector: (!investigation.spec.node_selector.is_empty())
+                        .then(|| investigation.spec.node_selector.clone()),
+                    affinity,
+                    tolerations: (!tolerations.is_empty()).then_some(tolerations),
                     containers: vec![Container {
                         name: "codex".to_owned(),
                         image: Some(investigation.spec.agent_image.clone()),
@@ -254,7 +271,8 @@ fn error_policy(_: Arc<Investigation>, error: &ReconcileError, _: Arc<Context>) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::crd::SecretKeyRef;
+    use crate::crd::{InvestigationSpec, SecretKeyRef};
+    use std::collections::BTreeMap;
 
     fn secret(name: &str, key: &str) -> SecretKeyRef {
         SecretKeyRef {
@@ -315,5 +333,37 @@ mod tests {
             agent_auth(&both, "agent:test"),
             Err(ReconcileError::InvalidAuth)
         ));
+    }
+
+    #[test]
+    fn agent_job_uses_investigation_scheduling() {
+        let mut investigation = Investigation::new(
+            "test",
+            InvestigationSpec {
+                query: "investigate".to_owned(),
+                agent_image: "agent:test".to_owned(),
+                auth: AgentAuth {
+                    api_key_secret_ref: Some(secret("openai", "api-key")),
+                    auth_json_secret_ref: None,
+                },
+                mcp_servers: vec![],
+                service_account_name: "agent".to_owned(),
+                node_selector: BTreeMap::from([("workload".to_owned(), "agent".to_owned())]),
+                affinity: Some(json!({"nodeAffinity": {}})),
+                tolerations: vec![json!({"key": "agent", "operator": "Exists"})],
+            },
+        );
+        investigation.metadata.uid = Some("test-uid".to_owned());
+
+        let pod = agent_job(&investigation, "test-agent".to_owned())
+            .unwrap()
+            .spec
+            .unwrap()
+            .template
+            .spec
+            .unwrap();
+        assert_eq!(pod.node_selector.unwrap()["workload"], "agent");
+        assert!(pod.affinity.unwrap().node_affinity.is_some());
+        assert_eq!(pod.tolerations.unwrap()[0].key.as_deref(), Some("agent"));
     }
 }

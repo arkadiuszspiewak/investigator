@@ -99,6 +99,9 @@ mcpServers:
         tcpSocket: {port: 8080}
         initialDelaySeconds: 2
         periodSeconds: 5
+    nodeSelector: &serverNodeSelector {}
+    tolerations: &serverTolerations []
+    affinity: &serverAffinity {}
     extraLabels: {}
     extraAnnotations: {}
 
@@ -116,6 +119,9 @@ mcpServers:
     securityContext: *serverSecurityContext
     resources: *serverResources
     health: *serverHealth
+    nodeSelector: *serverNodeSelector
+    tolerations: *serverTolerations
+    affinity: *serverAffinity
     extraLabels: {}
     extraAnnotations: {}
 
@@ -133,5 +139,8 @@ mcpServers:
     securityContext: *serverSecurityContext
     resources: *serverResources
     health: *serverHealth
+    nodeSelector: *serverNodeSelector
+    tolerations: *serverTolerations
+    affinity: *serverAffinity
     extraLabels: {}
     extraAnnotations: {}

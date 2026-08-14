@@ -1,6 +1,7 @@
 use kube::CustomResource;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 #[derive(CustomResource, Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[kube(
@@ -31,6 +32,18 @@ pub struct InvestigationSpec {
     /// ServiceAccount used by the agent Job. Its RBAC defines the blast radius.
     #[serde(default = "default_service_account")]
     pub service_account_name: String,
+
+    /// Labels that the agent Job's node must have.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub node_selector: BTreeMap<String, String>,
+
+    /// Kubernetes affinity rules applied to the agent Job pod.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub affinity: Option<serde_json::Value>,
+
+    /// Kubernetes taint tolerations applied to the agent Job pod.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tolerations: Vec<serde_json::Value>,
 }
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]

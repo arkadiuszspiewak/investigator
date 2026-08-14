@@ -52,6 +52,18 @@ spec:
                 serviceAccountName:
                   type: string
                   default: investigator-agent
+                nodeSelector:
+                  type: object
+                  additionalProperties:
+                    type: string
+                affinity:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+                tolerations:
+                  type: array
+                  items:
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
                 mcpServers:
                   type: array
                   default: []
