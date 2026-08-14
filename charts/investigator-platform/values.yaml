@@ -5,7 +5,7 @@ investigator:
   enabled: true
   replicaCount: 1
   image:
-    repository: ghcr.io/example/investigator
+    repository: ghcr.io/arkadiuszspiewak/investigator
     tag: ""
     digest: ""
     pullPolicy: IfNotPresent
@@ -39,7 +39,7 @@ investigator:
 mcpServers:
   kubernetes:
     enabled: true
-    image: {repository: ghcr.io/example/kubernetes-mcp, tag: "", digest: ""}
+    image: {repository: ghcr.io/arkadiuszspiewak/kubernetes-mcp, tag: "", digest: ""}
     replicas: 1
     port: 8080
     path: /mcp
@@ -104,7 +104,7 @@ mcpServers:
 
   prometheus:
     enabled: false
-    image: {repository: ghcr.io/example/prometheus-mcp, tag: "", digest: ""}
+    image: {repository: ghcr.io/arkadiuszspiewak/prometheus-mcp, tag: "", digest: ""}
     replicas: 1
     port: 8080
     path: /mcp
@@ -121,7 +121,7 @@ mcpServers:
 
   argo:
     enabled: false
-    image: {repository: ghcr.io/example/argo-mcp, tag: "", digest: ""}
+    image: {repository: ghcr.io/arkadiuszspiewak/argo-mcp, tag: "", digest: ""}
     replicas: 1
     port: 8080
     path: /mcp
