@@ -64,8 +64,14 @@ pub async fn run(client: Client, agent_job: AgentJobConfig) {
         )
         .for_each(|result| async move {
             match result {
-                Ok(object) => tracing::info!(?object, "reconciled investigation"),
-                Err(error) => tracing::error!(%error, "reconciliation failed"),
+                Ok(object) => tracing::info!(
+                    event = "investigation_reconciled",
+                    object = ?object,
+                ),
+                Err(error) => tracing::error!(
+                    event = "investigation_reconciliation_failed",
+                    error = %error,
+                ),
             }
         })
         .await;
@@ -405,7 +411,10 @@ fn agent_auth(auth: &AgentAuth, agent_image: &str) -> Result<AgentAuthResources,
 }
 
 fn error_policy(_: Arc<Investigation>, error: &ReconcileError, _: Arc<Context>) -> Action {
-    tracing::warn!(%error, "retrying investigation");
+    tracing::warn!(
+        event = "investigation_reconciliation_retry_scheduled",
+        error = %error,
+    );
     Action::requeue(Duration::from_secs(30))
 }
 

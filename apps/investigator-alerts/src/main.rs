@@ -127,18 +127,33 @@ struct AlertWebhook {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), AppError> {
+async fn main() -> std::process::ExitCode {
     // kube uses rustls with ring while reqwest enables aws-lc-rs. Feature
     // unification therefore leaves rustls unable to choose automatically.
     // Select one provider before either client constructs a TLS configuration.
     let _ = rustls::crypto::ring::default_provider().install_default();
 
     tracing_subscriber::fmt()
+        .json()
+        .flatten_event(true)
+        .with_current_span(false)
+        .with_span_list(false)
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| "investigator_alerts=info".into()),
         )
         .init();
+
+    match run().await {
+        Ok(()) => std::process::ExitCode::SUCCESS,
+        Err(error) => {
+            tracing::error!(event = "application_failed", error = %error);
+            std::process::ExitCode::FAILURE
+        }
+    }
+}
+
+async fn run() -> Result<(), AppError> {
     let config = Config::parse();
     validate_auth(&config)?;
     let notification = notification_target(&config)?;
@@ -154,7 +169,11 @@ async fn main() -> Result<(), AppError> {
         .route("/healthz", get(|| async { StatusCode::NO_CONTENT }))
         .route("/alerts", post(receive_alerts))
         .with_state(state);
-    tracing::info!(%address, "listening for Alertmanager webhooks");
+    tracing::info!(
+        event = "http_server_started",
+        transport = "http",
+        address = %address,
+    );
     axum::serve(tokio::net::TcpListener::bind(address).await?, app).await?;
     Ok(())
 }
@@ -163,11 +182,27 @@ async fn receive_alerts(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<AlertWebhook>,
 ) -> StatusCode {
-    for alert in payload.alerts.into_iter().filter(|a| a.status == "firing") {
+    let alert_count = payload.alerts.len();
+    let firing_count = payload
+        .alerts
+        .iter()
+        .filter(|alert| alert.status == "firing")
+        .count();
+    tracing::info!(event = "alert_webhook_accepted", alert_count, firing_count,);
+    for alert in payload
+        .alerts
+        .into_iter()
+        .filter(|alert| alert.status == "firing")
+    {
         let state = state.clone();
+        let investigation_name = alert_investigation_name(&alert);
         tokio::spawn(async move {
             if let Err(error) = investigate(state, alert).await {
-                tracing::error!(%error, "alert investigation failed");
+                tracing::error!(
+                    event = "alert_investigation_failed",
+                    investigation_name,
+                    error = %error,
+                );
             }
         });
     }
@@ -190,9 +225,15 @@ async fn investigate(state: Arc<AppState>, alert: Alert) -> Result<(), AppError>
         },
     );
     match api.create(&PostParams::default(), &investigation).await {
-        Ok(_) => tracing::info!(%name, "created alert investigation"),
+        Ok(_) => tracing::info!(
+            event = "alert_investigation_created",
+            investigation_name = name,
+        ),
         Err(kube::Error::Api(response)) if response.code == 409 => {
-            tracing::info!(%name, "alert investigation already exists");
+            tracing::info!(
+                event = "alert_investigation_already_exists",
+                investigation_name = name,
+            );
             return Ok(());
         }
         Err(error) => return Err(error.into()),
@@ -216,7 +257,11 @@ async fn investigate(state: Arc<AppState>, alert: Alert) -> Result<(), AppError>
             )
             .await
         {
-            tracing::warn!(%name, %error, "could not persist Slack thread metadata");
+            tracing::warn!(
+                event = "slack_thread_metadata_persist_failed",
+                investigation_name = name,
+                error = %error,
+            );
         }
         Some(message)
     } else {

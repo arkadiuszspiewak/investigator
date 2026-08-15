@@ -64,6 +64,13 @@ where
     let service: StreamableHttpService<S, LocalSessionManager> =
         StreamableHttpService::new(move || Ok(server.clone()), Default::default(), config);
     let listener = tokio::net::TcpListener::bind(address).await?;
+    tracing::info!(
+        event = "mcp_http_listener_bound",
+        transport = "http",
+        address = %address,
+        path,
+        stateless,
+    );
     axum::serve(listener, Router::new().nest_service(&path, service))
         .with_graceful_shutdown(shutdown_signal())
         .await?;
@@ -88,4 +95,5 @@ fn env_flag(name: &str, default: bool) -> Result<bool, TransportError> {
 
 async fn shutdown_signal() {
     let _ = tokio::signal::ctrl_c().await;
+    tracing::info!(event = "shutdown_signal_received", signal = "ctrl_c");
 }

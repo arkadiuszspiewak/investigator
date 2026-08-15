@@ -53,7 +53,28 @@ struct Config {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), AppError> {
+async fn main() -> std::process::ExitCode {
+    tracing_subscriber::fmt()
+        .json()
+        .flatten_event(true)
+        .with_current_span(false)
+        .with_span_list(false)
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "investigator_cli=info".into()),
+        )
+        .init();
+
+    match run().await {
+        Ok(()) => std::process::ExitCode::SUCCESS,
+        Err(error) => {
+            tracing::error!(event = "application_failed", error = %error);
+            std::process::ExitCode::FAILURE
+        }
+    }
+}
+
+async fn run() -> Result<(), AppError> {
     let args = Args::parse();
     let config_path = args.config.unwrap_or(default_config_path()?);
     let config = load_config(&config_path)?;
@@ -61,17 +82,21 @@ async fn main() -> Result<(), AppError> {
 
     if let Some(name) = args.run_investigation {
         if let Some(existing) = api.get_opt(&name).await? {
-            println!("Resuming investigation `{name}`.");
+            tracing::info!(event = "investigation_resumed", investigation_name = name,);
             conversation(&api, &name, Some(existing)).await?;
         } else {
-            println!("Starting investigation `{name}`. Enter the initial question.");
+            tracing::info!(event = "investigation_started", investigation_name = name,);
             let Some(query) = prompt("investigation> ")? else {
                 return Ok(());
             };
             match create_investigation(&api, &name, query, &config).await {
                 Ok(()) => conversation(&api, &name, None).await?,
                 Err(kube::Error::Api(response)) if response.code == 409 => {
-                    println!("Investigation `{name}` was created concurrently; resuming it.");
+                    tracing::warn!(
+                        event = "investigation_create_conflict",
+                        investigation_name = name,
+                        action = "resume",
+                    );
                     conversation(&api, &name, Some(api.get(&name).await?)).await?;
                 }
                 Err(error) => return Err(error.into()),
