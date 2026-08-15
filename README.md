@@ -56,7 +56,8 @@ The reusable app image runs the selected binary; server images start with
 
 `investigator-cli` is distributed as a native binary for Linux and macOS on
 x86-64 and ARM64. Releases also contain a Windows x86-64 artifact. Install the
-latest CLI into `~/.local/bin` with:
+newest GitHub release whose tag matches `investigator-cli-v*` into
+`~/.local/bin` with:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/arkadiuszspiewak/investigator/main/install.sh | sh
@@ -71,9 +72,11 @@ curl -fsSL https://raw.githubusercontent.com/arkadiuszspiewak/investigator/main/
 ./install.sh --version 0.1.0 --install-dir /usr/local/bin
 ```
 
-The installer downloads the matching `investigator-cli-v<VERSION>` GitHub
-release artifact and verifies it against the published SHA-256 checksums. It
-accepts a complete tag such as `--version investigator-cli-v0.1.0` as well.
+For the default `latest` selection, the installer queries GitHub releases and
+ignores chart, controller, server, and other unrelated releases. It downloads
+the matching `investigator-cli-v<VERSION>` artifact and verifies it against the
+published SHA-256 checksums. It accepts a complete tag such as
+`--version investigator-cli-v0.1.0` as well.
 Review [`install.sh`](install.sh) before piping it to a shell if required by your
 security policy. To build locally instead, run
 `cargo install --path apps/investigator-cli`.

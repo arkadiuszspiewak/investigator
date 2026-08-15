@@ -48,12 +48,6 @@ esac
 
 target="${architecture}-${system}"
 archive="investigator-cli-${target}.tar.gz"
-if [ "$version" = latest ]; then
-  release_url="https://github.com/${repository}/releases/latest/download"
-else
-  case "$version" in investigator-cli-v*) tag=$version ;; *) tag="investigator-cli-v${version}" ;; esac
-  release_url="https://github.com/${repository}/releases/download/${tag}"
-fi
 
 temporary_dir=$(mktemp -d)
 trap 'rm -rf "$temporary_dir"' EXIT HUP INT TERM
@@ -71,7 +65,20 @@ download() {
   fi
 }
 
-printf 'Downloading investigator-cli %s for %s...\n' "$version" "$target"
+if [ "$version" = latest ]; then
+  releases_file="${temporary_dir}/releases.json"
+  download "https://api.github.com/repos/${repository}/releases?per_page=100" "$releases_file"
+  tag=$(sed -n 's/^[[:space:]]*"tag_name":[[:space:]]*"\(investigator-cli-v[^"[:space:]]*\)",*[[:space:]]*$/\1/p' "$releases_file" | head -n 1)
+  if [ -z "$tag" ]; then
+    printf 'error: no investigator-cli-v* release found in %s\n' "$repository" >&2
+    exit 1
+  fi
+else
+  case "$version" in investigator-cli-v*) tag=$version ;; *) tag="investigator-cli-v${version}" ;; esac
+fi
+release_url="https://github.com/${repository}/releases/download/${tag}"
+
+printf 'Downloading %s for %s...\n' "$tag" "$target"
 download "${release_url}/${archive}" "${temporary_dir}/${archive}"
 download "${release_url}/checksums.txt" "${temporary_dir}/checksums.txt"
 
