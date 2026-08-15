@@ -54,8 +54,9 @@ The reusable app image runs the selected binary; server images start with
 
 ### Install the CLI
 
-`investigator-cli` is distributed as a native binary for Linux and macOS on
-x86-64 and ARM64. Releases also contain a Windows x86-64 artifact. Install the
+`investigator-cli` is distributed as a statically linked Linux binary and a
+native macOS binary for x86-64 and ARM64. The static Linux builds do not depend
+on the host's glibc version. Releases also contain a Windows x86-64 artifact. Install the
 newest GitHub release whose tag matches `investigator-cli-v*` into
 `~/.local/bin` with:
 

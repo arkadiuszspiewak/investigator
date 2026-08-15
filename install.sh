@@ -35,7 +35,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 case "$(uname -s)" in
-  Linux) system=unknown-linux-gnu ;;
+  Linux) system=unknown-linux-musl ;;
   Darwin) system=apple-darwin ;;
   *) printf 'error: unsupported operating system: %s\n' "$(uname -s)" >&2; exit 1 ;;
 esac
