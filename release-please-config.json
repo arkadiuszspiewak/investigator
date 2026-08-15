@@ -40,14 +40,12 @@
     "servers/kubernetes-mcp": {
       "component": "kubernetes-mcp",
       "package-name": "kubernetes-mcp",
-      "release-type": "rust",
-      "initial-version": "0.1.1"
+      "release-type": "rust"
     },
     "servers/prometheus-mcp": {
       "component": "prometheus-mcp",
       "package-name": "prometheus-mcp",
-      "release-type": "rust",
-      "initial-version": "0.1.1"
+      "release-type": "rust"
     },
     "servers/alertmanager-mcp": {
       "component": "alertmanager-mcp",
