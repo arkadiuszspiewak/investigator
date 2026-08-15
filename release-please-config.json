@@ -1,0 +1,63 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "2f00a910dee1226a61e78dfc97f77000e4dee92e",
+  "include-component-in-tag": true,
+  "include-v-in-tag": true,
+  "tag-separator": "-",
+  "separate-pull-requests": false,
+  "plugins": [
+    {
+      "type": "cargo-workspace",
+      "considerAllArtifacts": false
+    }
+  ],
+  "packages": {
+    "apps/investigator": {
+      "component": "investigator",
+      "package-name": "investigator",
+      "release-type": "rust"
+    },
+    "apps/investigator-cli": {
+      "component": "investigator-cli",
+      "package-name": "investigator-cli",
+      "release-type": "rust"
+    },
+    "apps/investigator-alerts": {
+      "component": "investigator-alerts",
+      "package-name": "investigator-alerts",
+      "release-type": "rust"
+    },
+    "docker": {
+      "component": "agent",
+      "package-name": "investigator-agent",
+      "release-type": "simple",
+      "initial-version": "0.1.0",
+      "exclude-paths": [
+        "Dockerfile.app",
+        "Dockerfile.server"
+      ]
+    },
+    "servers/kubernetes-mcp": {
+      "component": "kubernetes-mcp",
+      "package-name": "kubernetes-mcp",
+      "release-type": "rust",
+      "initial-version": "0.1.0"
+    },
+    "servers/prometheus-mcp": {
+      "component": "prometheus-mcp",
+      "package-name": "prometheus-mcp",
+      "release-type": "rust",
+      "initial-version": "0.1.0"
+    },
+    "servers/alertmanager-mcp": {
+      "component": "alertmanager-mcp",
+      "package-name": "alertmanager-mcp",
+      "release-type": "rust"
+    },
+    "charts/investigator-platform": {
+      "component": "chart",
+      "package-name": "investigator-platform",
+      "release-type": "helm"
+    }
+  }
+}

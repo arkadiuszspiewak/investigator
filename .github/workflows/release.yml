@@ -1,0 +1,77 @@
+name: Release components
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: release-please-main
+  cancel-in-progress: false
+
+permissions:
+  actions: write
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      - name: Start artifact workflows
+        if: steps.release.outputs.releases_created == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_OUTPUTS: ${{ toJSON(steps.release.outputs) }}
+          RELEASED_PATHS: ${{ steps.release.outputs.paths_released }}
+        run: |
+          set -euo pipefail
+
+          while IFS= read -r path; do
+            case "$path" in
+              apps/investigator)
+                workflow="build-investigator.yml"
+                ;;
+              apps/investigator-cli)
+                workflow="build-investigator-cli.yml"
+                ;;
+              apps/investigator-alerts)
+                workflow="build-investigator-alerts.yml"
+                ;;
+              docker)
+                workflow="build-agent.yml"
+                ;;
+              servers/kubernetes-mcp)
+                workflow="build-kubernetes-mcp.yml"
+                ;;
+              servers/prometheus-mcp)
+                workflow="build-prometheus-mcp.yml"
+                ;;
+              servers/alertmanager-mcp)
+                workflow="build-alertmanager-mcp.yml"
+                ;;
+              charts/investigator-platform)
+                workflow="release-helm.yml"
+                ;;
+              *)
+                echo "Unsupported released component path: $path" >&2
+                exit 1
+                ;;
+            esac
+
+            tag=$(jq -r --arg key "${path}--tag_name" '.[$key]' <<<"$RELEASE_OUTPUTS")
+            if [[ -z "$tag" || "$tag" == "null" ]]; then
+              echo "Release Please did not return a tag for $path" >&2
+              exit 1
+            fi
+
+            gh workflow run "$workflow" --ref "$tag"
+            echo "Dispatched $workflow for $tag"
+          done < <(jq -r '.[]' <<<"$RELEASED_PATHS")

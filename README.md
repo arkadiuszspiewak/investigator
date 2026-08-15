@@ -246,11 +246,21 @@ helm upgrade --install investigator charts/investigator-platform \
 Each provider has dedicated configuration under `mcpServers.<provider>`. Copy
 an entry and set `enabled: true` to add one without changing templates. Server
 images use thin path-filtered workflows that call the shared
-`_build-server.yml`; chart tags such as `chart-v0.2.0` publish Helm releases.
+`_build-server.yml`.
 
-Tags named `investigator-cli-v<VERSION>` build native CLI archives for supported
-platforms, publish checksums, and create a GitHub release consumed by
-`install.sh`. The CLI is not packaged as a container image.
+Release Please manages independent versions and GitHub Releases for every app,
+server, the agent, and the chart. Commits on `main` must use Conventional Commit
+prefixes: `fix:` creates a patch release, `feat:` creates a minor release, and a
+type followed by `!` (for example, `feat!:`) creates a major release. Commits
+without a release-bearing prefix do not increment a version.
+
+Release Please maintains one combined release PR containing only components
+with release-bearing changes. Merging that PR creates component tags such as
+`investigator-v0.2.0` and `chart-v0.2.0`, creates the corresponding GitHub
+Releases, and dispatches the existing artifact workflow for each released
+component. Tags named `investigator-cli-v<VERSION>` build native CLI archives
+for supported platforms and attach them and their checksums to the GitHub
+Release consumed by `install.sh`. The CLI is not packaged as a container image.
 
 When upgrading from an operator-backed chart release, delete the old
 `MCPServer` resources and wait for their owned Deployments and Services to be
