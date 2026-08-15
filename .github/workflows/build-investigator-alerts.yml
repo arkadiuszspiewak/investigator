@@ -1,7 +1,7 @@
 name: Build investigator-alerts
 on:
   pull_request:
-    paths: [apps/investigator-alerts/**, apps/investigator/src/crd.rs, Cargo.toml, Cargo.lock, docker/Dockerfile.app, .github/workflows/_build-app.yml, .github/workflows/build-investigator-alerts.yml]
+    paths: [apps/investigator-alerts/**, apps/investigator/src/crd.rs, Cargo.toml, docker/Dockerfile.app, .github/workflows/_build-app.yml, .github/workflows/build-investigator-alerts.yml]
   push:
     branches: [main]
     tags: [investigator-alerts-v*]

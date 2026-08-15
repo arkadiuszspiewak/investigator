@@ -6,7 +6,6 @@ on:
       - servers/alertmanager-mcp/**
       - crates/mcp-runtime/**
       - Cargo.toml
-      - Cargo.lock
       - docker/Dockerfile.server
       - .github/workflows/_build-server.yml
       - .github/workflows/build-alertmanager-mcp.yml

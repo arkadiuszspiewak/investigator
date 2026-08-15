@@ -6,7 +6,6 @@ on:
       - apps/investigator-cli/**
       - apps/investigator/src/crd.rs
       - Cargo.toml
-      - Cargo.lock
       - install.sh
       - .github/workflows/build-investigator-cli.yml
   push:

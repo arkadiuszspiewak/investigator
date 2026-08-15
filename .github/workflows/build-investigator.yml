@@ -5,7 +5,6 @@ on:
     paths:
       - apps/investigator/**
       - Cargo.toml
-      - Cargo.lock
       - docker/Dockerfile.app
       - .github/workflows/_build-app.yml
       - .github/workflows/build-investigator.yml
