@@ -143,6 +143,32 @@ mcpServers:
     extraLabels: {}
     extraAnnotations: {}
 
+  alertmanager:
+    enabled: false
+    image: {repository: ghcr.io/arkadiuszspiewak/alertmanager-mcp, tag: "", digest: "", pullPolicy: IfNotPresent}
+    imagePullSecrets: []
+    replicas: 1
+    port: 8080
+    path: /mcp
+    stateless: true
+    env:
+      - name: ALERTMANAGER_URL
+        value: http://alertmanager-operated.monitoring.svc.cluster.local:9093
+      # Optionally provide ALERTMANAGER_BEARER_TOKEN with valueFrom.secretKeyRef.
+      - name: ALERTMANAGER_TIMEOUT_SECONDS
+        value: "30"
+    serviceAccount: {create: true, name: "", annotations: {}}
+    rbac: {create: false, rules: [], extraRules: []}
+    podSecurityContext: *serverPodSecurityContext
+    securityContext: *serverSecurityContext
+    resources: *serverResources
+    health: *serverHealth
+    nodeSelector: *serverNodeSelector
+    tolerations: *serverTolerations
+    affinity: *serverAffinity
+    extraLabels: {}
+    extraAnnotations: {}
+
   argo:
     enabled: false
     image: {repository: ghcr.io/arkadiuszspiewak/argo-mcp, tag: "", digest: "", pullPolicy: IfNotPresent}

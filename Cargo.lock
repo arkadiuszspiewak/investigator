@@ -25,6 +25,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "alertmanager-mcp"
+version = "0.1.0"
+dependencies = [
+ "mcp-runtime",
+ "reqwest",
+ "rmcp",
+ "schemars",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "allocator-api2"
 version = "0.2.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"

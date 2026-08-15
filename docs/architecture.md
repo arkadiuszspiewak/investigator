@@ -16,6 +16,8 @@ Investigation CR ──> investigator controller ──> one Codex Job
   scaled, and deployed.
 - `prometheus-mcp` stays read-only and exposes only PromQL, metric/label
   discovery, and scrape-target health through the Prometheus HTTP API.
+- `alertmanager-mcp` exposes only active alerts, grouping, silences, receivers,
+  and status through read-only Alertmanager API calls.
 - `mcp-runtime` contains transport mechanics only. Provider clients and tool
   schemas stay with their server.
 

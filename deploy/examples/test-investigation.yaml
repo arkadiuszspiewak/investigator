@@ -5,8 +5,8 @@ metadata:
   namespace: investigator
 spec:
   query: >-
-    Use the Kubernetes MCP server to list the pods in the investigator
-    namespace. Summarize their readiness and report any unhealthy pods.
+    Use the Kubernetes MCP and Prometheus MCP server to audit pihole namespace.
+    Analise why there is such diffrence beetwen ram usage of both pihole instances. Analize in detail why primary pihole has smaller database, why it report 0 blocked domain. Check config and how they are similiar.
     Do not make any changes.
   agentImage: ghcr.io/arkadiuszspiewak/investigator-agent:latest
   auth:
@@ -29,3 +29,5 @@ spec:
   mcpServers:
     - name: kubernetes
       url: http://investigator-investigator-platform-kubernetes.investigator.svc.cluster.local:8080/mcp
+    - name: prometheus
+      url: http://investigator-investigator-platform-prometheus.investigator.svc.cluster.local:8080/mcp

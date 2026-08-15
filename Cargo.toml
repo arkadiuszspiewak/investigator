@@ -1,5 +1,5 @@
 [workspace]
-members = ["apps/investigator", "crates/mcp-runtime", "servers/kubernetes-mcp", "servers/prometheus-mcp"]
+members = ["apps/investigator", "crates/mcp-runtime", "servers/alertmanager-mcp", "servers/kubernetes-mcp", "servers/prometheus-mcp"]
 resolver = "2"
 
 [workspace.package]

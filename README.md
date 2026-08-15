@@ -11,6 +11,7 @@ apps/investigator/          Investigation CRD and Job controller
 crates/mcp-runtime/         shared MCP Streamable HTTP transport
 servers/kubernetes-mcp/    read-only Kubernetes MCP server and tools
 servers/prometheus-mcp/    read-only PromQL and target-health MCP server
+servers/alertmanager-mcp/  read-only alerts and Alertmanager status MCP server
 charts/investigator-platform/ central controller + MCP server chart
 docker/                     controller and reusable server Dockerfiles
 deploy/examples/            example Investigation resources
@@ -75,6 +76,7 @@ security boundary. Do not use the controller ServiceAccount for agent Jobs.
 See [architecture](docs/architecture.md) for design decisions and next steps.
 See [adding an MCP server](docs/adding-mcp-server.md) for the extension checklist.
 See [Prometheus MCP server](docs/prometheus-mcp.md) for its tools and configuration.
+See [Alertmanager MCP server](docs/alertmanager-mcp.md) for alert investigation tools.
 
 ## Helm and releases
 

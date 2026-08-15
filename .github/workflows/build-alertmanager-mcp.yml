@@ -1,0 +1,36 @@
+name: Build alertmanager-mcp
+
+on:
+  pull_request:
+    paths:
+      - servers/alertmanager-mcp/**
+      - crates/mcp-runtime/**
+      - Cargo.toml
+      - Cargo.lock
+      - docker/Dockerfile.server
+      - .github/workflows/_build-server.yml
+      - .github/workflows/build-alertmanager-mcp.yml
+  push:
+    branches: [main]
+    tags: [alertmanager-mcp-v*]
+    paths:
+      - servers/alertmanager-mcp/**
+      - crates/mcp-runtime/**
+      - Cargo.toml
+      - Cargo.lock
+      - docker/Dockerfile.server
+      - .github/workflows/_build-server.yml
+      - .github/workflows/build-alertmanager-mcp.yml
+  workflow_dispatch:
+
+jobs:
+  image:
+    uses: ./.github/workflows/_build-server.yml
+    permissions:
+      contents: read
+      packages: write
+    with:
+      package: alertmanager-mcp
+      binary: alertmanager-mcp
+      image: alertmanager-mcp
+    secrets: inherit
