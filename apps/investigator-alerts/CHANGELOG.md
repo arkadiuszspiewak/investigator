@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/arkadiuszspiewak/investigator/compare/investigator-alerts-v0.1.4...investigator-alerts-v0.2.0) (2026-08-15)
+
+
+### Features
+
+* log slack message being sent ([1d0d00e](https://github.com/arkadiuszspiewak/investigator/commit/1d0d00eb64442c82ec7caf999ea500f36c641084))
+
 ## [0.1.4](https://github.com/arkadiuszspiewak/investigator/compare/investigator-alerts-v0.1.3...investigator-alerts-v0.1.4) (2026-08-15)
 
 
