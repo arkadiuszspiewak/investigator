@@ -63,12 +63,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let api = Api::<Investigation>::namespaced(Client::try_default().await?, &config.namespace);
 
     if let Some(name) = args.run_investigation {
-        println!("Starting investigation `{name}`. Enter the initial question.");
-        let Some(query) = prompt("investigation> ")? else {
-            return Ok(());
-        };
-        create_investigation(&api, &name, query, &config).await?;
-        conversation(&api, &name).await?;
+        if let Some(existing) = api.get_opt(&name).await? {
+            println!("Resuming investigation `{name}`.");
+            conversation(&api, &name, Some(existing)).await?;
+        } else {
+            println!("Starting investigation `{name}`. Enter the initial question.");
+            let Some(query) = prompt("investigation> ")? else {
+                return Ok(());
+            };
+            match create_investigation(&api, &name, query, &config).await {
+                Ok(()) => conversation(&api, &name, None).await?,
+                Err(kube::Error::Api(response)) if response.code == 409 => {
+                    println!("Investigation `{name}` was created concurrently; resuming it.");
+                    conversation(&api, &name, Some(api.get(&name).await?)).await?;
+                }
+                Err(error) => return Err(error.into()),
+            }
+        }
     } else if let Some(query) = args.one_shot {
         let name = args.name.unwrap_or_else(generated_name);
         create_investigation(&api, &name, query, &config).await?;
@@ -128,16 +139,36 @@ async fn create_investigation(
 async fn conversation(
     api: &Api<Investigation>,
     name: &str,
+    existing: Option<Investigation>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let mut shown_answers = 0;
+    let mut shown_answers = existing.as_ref().map(available_answers).unwrap_or(0);
+    let mut waiting = existing.as_ref().map(has_pending_turn).unwrap_or(true);
+    let mut current = existing;
+
+    if let Some(investigation) = current.as_ref() {
+        print_history(investigation);
+        if investigation
+            .status
+            .as_ref()
+            .and_then(|status| status.phase.as_deref())
+            == Some("Failed")
+        {
+            return Ok(());
+        }
+    }
+
     loop {
-        let investigation = wait_for_answer(api, name, shown_answers).await?;
-        print_answer(&investigation, shown_answers);
+        if waiting {
+            let investigation = wait_for_answer(api, name, shown_answers).await?;
+            print_answer(&investigation, shown_answers);
+            shown_answers = available_answers(&investigation);
+            current = Some(investigation);
+        }
+        let investigation = current.take().expect("conversation state");
         let status = investigation.status.as_ref().expect("completed status");
         if status.phase.as_deref() == Some("Failed") {
             break;
         }
-        shown_answers = status.answers.len() + 1;
         let Some(question) = prompt("follow-up (empty to exit)> ")? else {
             break;
         };
@@ -152,8 +183,47 @@ async fn conversation(
             &Patch::Merge(serde_json::json!({"spec": {"questions": questions}})),
         )
         .await?;
+        waiting = true;
     }
     Ok(())
+}
+
+fn available_answers(investigation: &Investigation) -> usize {
+    investigation.status.as_ref().map_or(0, |status| {
+        usize::from(status.result.is_some()) + status.answers.len()
+    })
+}
+
+fn has_pending_turn(investigation: &Investigation) -> bool {
+    let Some(status) = investigation.status.as_ref() else {
+        return true;
+    };
+    status.result.is_none()
+        || investigation.spec.questions.len() > status.answers.len()
+        || matches!(status.phase.as_deref(), Some("Pending" | "Running"))
+}
+
+fn print_history(investigation: &Investigation) {
+    println!("\ninvestigation> {}", investigation.spec.query);
+    let Some(status) = investigation.status.as_ref() else {
+        println!("\nWaiting for the initial answer...");
+        return;
+    };
+    if let Some(result) = status.result.as_deref() {
+        println!("\n{result}");
+    }
+    for question in &investigation.spec.questions {
+        println!("\nfollow-up> {}", question.query);
+        if let Some(answer) = status
+            .answers
+            .iter()
+            .find(|answer| answer.question_id == question.id)
+        {
+            println!("\n{}", answer.result);
+        } else {
+            println!("\nWaiting for an answer...");
+        }
+    }
 }
 
 fn prompt(label: &str) -> Result<Option<String>, std::io::Error> {
@@ -214,6 +284,7 @@ fn default_service_account() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use investigator::crd::{InvestigationAnswer, InvestigationStatus};
 
     #[test]
     fn minimal_config_uses_defaults() {
@@ -224,5 +295,42 @@ mod tests {
         assert_eq!(config.namespace, "default");
         assert_eq!(config.service_account_name, "investigator-agent");
         assert!(config.mcp_servers.is_empty());
+    }
+
+    #[test]
+    fn completed_existing_investigation_is_ready_for_a_follow_up() {
+        let investigation = Investigation::new(
+            "existing",
+            InvestigationSpec {
+                query: "initial".into(),
+                questions: vec![InvestigationQuestion {
+                    id: "q1".into(),
+                    query: "follow-up".into(),
+                }],
+                agent_image: default_agent_image(),
+                auth: AgentAuth {
+                    api_key_secret_ref: None,
+                    auth_json_secret_ref: None,
+                },
+                mcp_servers: vec![],
+                service_account_name: default_service_account(),
+                node_selector: Default::default(),
+                affinity: None,
+                tolerations: vec![],
+            },
+        );
+        let mut investigation = investigation;
+        investigation.status = Some(InvestigationStatus {
+            phase: Some("Succeeded".into()),
+            result: Some("initial answer".into()),
+            answers: vec![InvestigationAnswer {
+                question_id: "q1".into(),
+                result: "follow-up answer".into(),
+            }],
+            ..Default::default()
+        });
+
+        assert_eq!(available_answers(&investigation), 2);
+        assert!(!has_pending_turn(&investigation));
     }
 }

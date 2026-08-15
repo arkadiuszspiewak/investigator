@@ -98,6 +98,10 @@ investigator-cli --run-investigation checkout-latency
 investigator-cli --run-investigation checkout-latency --config ./config.json
 ```
 
+If an Investigation with that name already exists, the CLI resumes it instead:
+it displays the stored conversation, waits for any running turn, and opens the
+follow-up prompt. It does not replace the original query or create another CR.
+
 For scripting or a single answer, use one-shot mode. Its Investigation name is
 generated unless `--name` is supplied:
 
