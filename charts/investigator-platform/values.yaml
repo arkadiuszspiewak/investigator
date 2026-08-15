@@ -50,6 +50,10 @@ apps:
     enabled: false
     # Empty means the Helm release namespace. RBAC is created in this namespace.
     investigationNamespace: ""
+    # With Slack App credentials, post a compact parent alert and put the
+    # investigation result in its thread. Keep false for independent/native
+    # Alertmanager Slack delivery.
+    relayMode: false
     image: {repository: ghcr.io/arkadiuszspiewak/investigator-alerts, tag: "", digest: "", pullPolicy: IfNotPresent}
     imagePullSecrets: []
     replicas: 1
@@ -74,7 +78,7 @@ apps:
       rules:
         - apiGroups: [investigator.openai.com]
           resources: [investigations]
-          verbs: [get, create]
+          verbs: [get, create, patch]
     podAnnotations: {}
     podLabels: {}
     podSecurityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, seccompProfile: {type: RuntimeDefault}}

@@ -8,7 +8,10 @@ use axum::{
 };
 use clap::Parser;
 use investigator::crd::{AgentAuth, Investigation, InvestigationSpec, McpServer, SecretKeyRef};
-use kube::{Api, Client, api::PostParams};
+use kube::{
+    Api, Client,
+    api::{Patch, PatchParams, PostParams},
+};
 use serde::Deserialize;
 use serde_json::json;
 
@@ -52,6 +55,10 @@ struct Config {
     slack_channel: Option<String>,
     #[arg(long, env = "SLACK_API_URL", default_value = "https://slack.com/api")]
     slack_api_url: String,
+    /// Post the original alert and put the investigation result in its thread.
+    /// Requires Slack App delivery; disabled keeps the independent notification flow.
+    #[arg(long, env = "RELAY_MODE", default_value_t = false)]
+    relay_mode: bool,
 }
 
 #[derive(Clone)]
@@ -78,6 +85,13 @@ enum NotificationTarget {
 struct SlackResponse {
     ok: bool,
     error: Option<String>,
+    ts: Option<String>,
+    channel: Option<String>,
+}
+
+struct SlackMessage {
+    channel: String,
+    ts: String,
 }
 
 fn default_investigation_namespace() -> String {
@@ -125,6 +139,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::parse();
     validate_auth(&config)?;
     let notification = notification_target(&config)?;
+    validate_relay_mode(&config, notification.as_ref())?;
     let address: std::net::SocketAddr = config.bind_address.parse()?;
     let state = Arc::new(AppState {
         config,
@@ -187,15 +202,43 @@ async fn investigate(
         }
         Err(error) => return Err(error.into()),
     }
+    let relay_thread = if state.config.relay_mode {
+        let notification = state.notification.as_ref().expect("validated relay target");
+        let message = send_notification(&state.http, notification, &relay_alert_text(&alert), None)
+            .await?
+            .expect("Slack App returns a message reference");
+        if let Err(error) = api
+            .patch(
+                &name,
+                &PatchParams::default(),
+                &Patch::Merge(json!({"metadata": {"annotations": {
+                    "investigator.openai.com/slack-channel": message.channel,
+                    "investigator.openai.com/slack-thread-ts": message.ts,
+                }}})),
+            )
+            .await
+        {
+            tracing::warn!(%name, %error, "could not persist Slack thread metadata");
+        }
+        Some(message)
+    } else {
+        None
+    };
     loop {
         let current = api.get(&name).await?;
         if let Some(status) = current.status {
             if status.phase.as_deref() == Some("Succeeded") {
                 if let (Some(notification), Some(result)) = (&state.notification, status.result) {
+                    let text = if state.config.relay_mode {
+                        format!("*Investigation complete*\n{result}")
+                    } else {
+                        format!("Alert investigation `{name}`\n{result}")
+                    };
                     send_notification(
                         &state.http,
                         notification,
-                        &format!("Alert investigation `{name}`\n{result}"),
+                        &text,
+                        relay_thread.as_ref().map(|message| message.ts.as_str()),
                     )
                     .await?;
                 }
@@ -207,6 +250,47 @@ async fn investigate(
         }
         tokio::time::sleep(Duration::from_secs(5)).await;
     }
+}
+
+fn validate_relay_mode(
+    config: &Config,
+    target: Option<&NotificationTarget>,
+) -> Result<(), &'static str> {
+    if config.relay_mode && !matches!(target, Some(NotificationTarget::SlackApp { .. })) {
+        return Err(
+            "RELAY_MODE requires SLACK_BOT_TOKEN and SLACK_CHANNEL; Slack webhooks cannot create reliable threads",
+        );
+    }
+    Ok(())
+}
+
+fn relay_alert_text(alert: &Alert) -> String {
+    let alertname = alert
+        .labels
+        .get("alertname")
+        .map(String::as_str)
+        .unwrap_or("Alert");
+    let severity = alert
+        .labels
+        .get("severity")
+        .map(String::as_str)
+        .unwrap_or("unknown");
+    let namespace = alert
+        .labels
+        .get("namespace")
+        .map(String::as_str)
+        .unwrap_or("unknown");
+    let summary = alert
+        .annotations
+        .get("summary")
+        .or_else(|| alert.annotations.get("message"))
+        .or_else(|| alert.annotations.get("description"))
+        .map(String::as_str)
+        .unwrap_or("No summary provided");
+    format!(
+        "*[FIRING] {alertname}*\nSeverity: `{severity}` · Namespace: `{namespace}`\n{summary}\n_Investigation started · fingerprint `{}`_",
+        alert.fingerprint
+    )
 }
 
 fn notification_target(config: &Config) -> Result<Option<NotificationTarget>, &'static str> {
@@ -233,7 +317,8 @@ async fn send_notification(
     http: &reqwest::Client,
     target: &NotificationTarget,
     text: &str,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    thread_ts: Option<&str>,
+) -> Result<Option<SlackMessage>, Box<dyn std::error::Error + Send + Sync>> {
     match target {
         NotificationTarget::SlackWebhook { url } => {
             http.post(url)
@@ -241,16 +326,21 @@ async fn send_notification(
                 .send()
                 .await?
                 .error_for_status()?;
+            Ok(None)
         }
         NotificationTarget::SlackApp {
             api_url,
             bot_token,
             channel,
         } => {
+            let mut body = json!({"channel": channel, "text": text});
+            if let Some(thread_ts) = thread_ts {
+                body["thread_ts"] = json!(thread_ts);
+            }
             let response = http
                 .post(format!("{api_url}/chat.postMessage"))
                 .bearer_auth(bot_token)
-                .json(&json!({"channel": channel, "text": text}))
+                .json(&body)
                 .send()
                 .await?
                 .error_for_status()?
@@ -263,9 +353,14 @@ async fn send_notification(
                 )
                 .into());
             }
+            Ok(Some(SlackMessage {
+                channel: response.channel.unwrap_or_else(|| channel.clone()),
+                ts: response
+                    .ts
+                    .ok_or("Slack chat.postMessage response did not contain ts")?,
+            }))
         }
     }
-    Ok(())
 }
 
 fn validate_auth(config: &Config) -> Result<(), &'static str> {
@@ -331,6 +426,7 @@ mod tests {
             slack_bot_token: None,
             slack_channel: None,
             slack_api_url: "https://slack.com/api".into(),
+            relay_mode: false,
         }
     }
 
@@ -356,5 +452,17 @@ mod tests {
         mixed.slack_bot_token = Some("xoxb-test".into());
         mixed.slack_channel = Some("C123".into());
         assert!(notification_target(&mixed).is_err());
+    }
+
+    #[test]
+    fn relay_mode_requires_a_slack_app() {
+        let mut config = config();
+        config.relay_mode = true;
+        assert!(validate_relay_mode(&config, None).is_err());
+
+        config.slack_bot_token = Some("xoxb-test".into());
+        config.slack_channel = Some("C123".into());
+        let target = notification_target(&config).unwrap();
+        assert!(validate_relay_mode(&config, target.as_ref()).is_ok());
     }
 }

@@ -140,6 +140,37 @@ Role and RoleBinding in that same target namespace. The namespace is a dedicated
 value rather than part of `apps.alerts.env`, so replacing the environment list
 for credentials cannot accidentally reset it to `default`.
 
+### Slack relay mode
+
+Slack delivery defaults to independent mode (`RELAY_MODE=false`): Alertmanager
+can keep sending its native Slack notification, while `investigator-alerts`
+posts the completed analysis separately. This is the safest mode when native
+Alertmanager delivery must continue working even if the investigation service
+is unavailable.
+
+Set `apps.alerts.relayMode=true` (which supplies `RELAY_MODE=true`) with
+`SLACK_BOT_TOKEN` and `SLACK_CHANNEL` to let
+`investigator-alerts` own the Slack conversation. It immediately posts a compact
+parent alert, records Slack's channel and message timestamp on the Investigation,
+and posts the completed analysis as a thread reply. Incoming webhooks are not
+supported in relay mode because they do not reliably return the parent timestamp.
+
+```yaml
+apps:
+  alerts:
+    enabled: true
+    relayMode: true
+    env:
+      - name: SLACK_BOT_TOKEN
+        valueFrom: {secretKeyRef: {name: slack-app, key: bot-token}}
+      - {name: SLACK_CHANNEL, value: "C0123456789"}
+      # Include the Investigation credential and MCP settings here as well.
+```
+
+When relay mode is enabled, remove the matching native Slack route to avoid two
+parent alerts. Alternatively, keep the native route intentionally as a fallback;
+Slack will then receive both the native alert and the relay-owned threaded alert.
+
 The delivery boundary is intentionally small: Alertmanager ingestion creates
 CRs, the core controller executes them, and notification delivery is isolated in
 the alert app. Additional chat providers can be added there without changing the

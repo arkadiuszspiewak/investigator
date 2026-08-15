@@ -63,6 +63,10 @@ spec:
           env:
             - name: INVESTIGATION_NAMESPACE
               value: {{ $investigationNamespace | quote }}
+            {{- if hasKey $app "relayMode" }}
+            - name: RELAY_MODE
+              value: {{ $app.relayMode | quote }}
+            {{- end }}
             {{- with $app.env }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
