@@ -134,6 +134,12 @@ posting to channels it has not joined. `SLACK_WEBHOOK_URL` and Slack App
 credentials are mutually exclusive. `SLACK_API_URL` can override the default
 `https://slack.com/api` endpoint.
 
+By default, alert Investigations are created in the Helm release namespace.
+Override this with `apps.alerts.investigationNamespace`; the chart creates the
+Role and RoleBinding in that same target namespace. The namespace is a dedicated
+value rather than part of `apps.alerts.env`, so replacing the environment list
+for credentials cannot accidentally reset it to `default`.
+
 The delivery boundary is intentionally small: Alertmanager ingestion creates
 CRs, the core controller executes them, and notification delivery is isolated in
 the alert app. Additional chat providers can be added there without changing the
@@ -166,6 +172,31 @@ read-only.
 
 The ServiceAccount named by `spec.serviceAccountName` is the investigation's
 security boundary. Do not use the controller ServiceAccount for agent Jobs.
+
+Agent Job placement is cluster policy and is configured once in Helm, rather
+than on individual Investigation resources. For example:
+
+```yaml
+investigator:
+  agentJob:
+    nodeSelector: {}
+    tolerations: []
+    affinity:
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: rpi
+                  operator: NotIn
+                  values: ["true"]
+            - matchExpressions:
+                - key: rpi
+                  operator: DoesNotExist
+```
+
+The controller applies `investigator.agentJob.nodeSelector`, `affinity`, and
+`tolerations` to every newly created investigation Job. Changing these settings
+does not mutate Jobs that Kubernetes has already created.
 
 See [architecture](docs/architecture.md) for design decisions and next steps.
 See [adding an MCP server](docs/adding-mcp-server.md) for the extension checklist.

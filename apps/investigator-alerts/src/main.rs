@@ -16,7 +16,7 @@ use serde_json::json;
 struct Config {
     #[arg(long, env = "ALERTS_BIND_ADDRESS", default_value = "0.0.0.0:8080")]
     bind_address: String,
-    #[arg(long, env = "INVESTIGATION_NAMESPACE", default_value = "default")]
+    #[arg(long, env = "INVESTIGATION_NAMESPACE", default_value_t = default_investigation_namespace())]
     namespace: String,
     #[arg(
         long,
@@ -78,6 +78,14 @@ enum NotificationTarget {
 struct SlackResponse {
     ok: bool,
     error: Option<String>,
+}
+
+fn default_investigation_namespace() -> String {
+    std::fs::read_to_string("/var/run/secrets/kubernetes.io/serviceaccount/namespace")
+        .ok()
+        .map(|namespace| namespace.trim().to_owned())
+        .filter(|namespace| !namespace.is_empty())
+        .unwrap_or_else(|| "default".to_owned())
 }
 
 #[derive(Clone, Deserialize, serde::Serialize)]
@@ -169,9 +177,6 @@ async fn investigate(
             auth: configured_auth(&state.config)?,
             mcp_servers: serde_json::from_str::<Vec<McpServer>>(&state.config.mcp_servers)?,
             service_account_name: state.config.service_account.clone(),
-            node_selector: Default::default(),
-            affinity: None,
-            tolerations: vec![],
         },
     );
     match api.create(&PostParams::default(), &investigation).await {

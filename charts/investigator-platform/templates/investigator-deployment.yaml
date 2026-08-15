@@ -39,10 +39,16 @@ spec:
           imagePullPolicy: {{ .Values.investigator.image.pullPolicy }}
           securityContext:
             {{- toYaml .Values.investigator.securityContext | nindent 12 }}
-          {{- with .Values.investigator.env }}
           env:
+            - name: INVESTIGATOR_AGENT_JOB_NODE_SELECTOR
+              value: {{ .Values.investigator.agentJob.nodeSelector | toJson | quote }}
+            - name: INVESTIGATOR_AGENT_JOB_AFFINITY
+              value: {{ ternary (.Values.investigator.agentJob.affinity | toJson) "null" (not (empty .Values.investigator.agentJob.affinity)) | quote }}
+            - name: INVESTIGATOR_AGENT_JOB_TOLERATIONS
+              value: {{ .Values.investigator.agentJob.tolerations | toJson | quote }}
+            {{- with .Values.investigator.env }}
             {{- toYaml . | nindent 12 }}
-          {{- end }}
+            {{- end }}
           resources:
             {{- toYaml .Values.investigator.resources | nindent 12 }}
       {{- with .Values.investigator.nodeSelector }}

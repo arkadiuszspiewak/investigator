@@ -34,6 +34,12 @@ investigator:
   nodeSelector: {}
   tolerations: []
   affinity: {}
+  # Scheduling policy applied by the controller to every investigation Job.
+  # Investigation resources and clients cannot override these values.
+  agentJob:
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
   rbac:
     create: true
 
@@ -42,14 +48,14 @@ investigator:
 apps:
   alerts:
     enabled: false
+    # Empty means the Helm release namespace. RBAC is created in this namespace.
+    investigationNamespace: ""
     image: {repository: ghcr.io/arkadiuszspiewak/investigator-alerts, tag: "", digest: "", pullPolicy: IfNotPresent}
     imagePullSecrets: []
     replicas: 1
     serviceAccount: {create: true, name: "", annotations: {}}
     service: {enabled: true, type: ClusterIP, port: 8080}
     env:
-      - name: INVESTIGATION_NAMESPACE
-        valueFrom: {fieldRef: {fieldPath: metadata.namespace}}
       - name: INVESTIGATION_QUERY
         value: "Investigate this active alert. Explain what happened, why it happened, and how to fix it. Alert: {{alert}}"
       - name: INVESTIGATION_SERVICE_ACCOUNT

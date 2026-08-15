@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
 use futures::StreamExt;
 use k8s_openapi::api::{
@@ -24,6 +24,33 @@ use investigator::crd::{AgentAuth, Investigation, InvestigationAnswer, Investiga
 #[derive(Clone)]
 struct Context {
     client: Client,
+    agent_job: AgentJobConfig,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct AgentJobConfig {
+    node_selector: BTreeMap<String, String>,
+    affinity: Option<Affinity>,
+    tolerations: Vec<Toleration>,
+}
+
+impl AgentJobConfig {
+    pub fn from_env() -> Result<Self, serde_json::Error> {
+        Ok(Self {
+            node_selector: serde_json::from_str(
+                &std::env::var("INVESTIGATOR_AGENT_JOB_NODE_SELECTOR")
+                    .unwrap_or_else(|_| "{}".to_owned()),
+            )?,
+            affinity: serde_json::from_str(
+                &std::env::var("INVESTIGATOR_AGENT_JOB_AFFINITY")
+                    .unwrap_or_else(|_| "null".to_owned()),
+            )?,
+            tolerations: serde_json::from_str(
+                &std::env::var("INVESTIGATOR_AGENT_JOB_TOLERATIONS")
+                    .unwrap_or_else(|_| "[]".to_owned()),
+            )?,
+        })
+    }
 }
 
 #[derive(Debug, Error)]
@@ -40,11 +67,15 @@ enum ReconcileError {
     InvalidAuth,
 }
 
-pub async fn run(client: Client) {
+pub async fn run(client: Client, agent_job: AgentJobConfig) {
     let investigations = Api::<Investigation>::all(client.clone());
     Controller::new(investigations, watcher::Config::default())
         .owns(Api::<Job>::all(client.clone()), watcher::Config::default())
-        .run(reconcile, error_policy, Arc::new(Context { client }))
+        .run(
+            reconcile,
+            error_policy,
+            Arc::new(Context { client, agent_job }),
+        )
         .for_each(|result| async move {
             match result {
                 Ok(object) => tracing::info!(?object, "reconciled investigation"),
@@ -99,6 +130,7 @@ async fn reconcile(
                     &investigation,
                     job_name.clone(),
                     conversation_prompt(&investigation, &previous, turn),
+                    &context.agent_job,
                 )?,
             )
             .await?;
@@ -233,6 +265,7 @@ fn agent_job(
     investigation: &Investigation,
     name: String,
     prompt: String,
+    config: &AgentJobConfig,
 ) -> Result<Job, ReconcileError> {
     let owner_reference = investigation
         .controller_owner_ref(&())
@@ -240,19 +273,6 @@ fn agent_job(
     let mcp_servers = serde_json::to_string(&investigation.spec.mcp_servers)?;
     let (auth_env, init_containers, volumes, volume_mounts) =
         agent_auth(&investigation.spec.auth, &investigation.spec.agent_image)?;
-    let affinity = investigation
-        .spec
-        .affinity
-        .clone()
-        .map(serde_json::from_value::<Affinity>)
-        .transpose()?;
-    let tolerations = investigation
-        .spec
-        .tolerations
-        .iter()
-        .cloned()
-        .map(serde_json::from_value::<Toleration>)
-        .collect::<Result<Vec<_>, _>>()?;
     Ok(Job {
         metadata: ObjectMeta {
             name: Some(name),
@@ -275,10 +295,11 @@ fn agent_job(
                 spec: Some(PodSpec {
                     restart_policy: Some("Never".to_owned()),
                     service_account_name: Some(investigation.spec.service_account_name.clone()),
-                    node_selector: (!investigation.spec.node_selector.is_empty())
-                        .then(|| investigation.spec.node_selector.clone()),
-                    affinity,
-                    tolerations: (!tolerations.is_empty()).then_some(tolerations),
+                    node_selector: (!config.node_selector.is_empty())
+                        .then(|| config.node_selector.clone()),
+                    affinity: config.affinity.clone(),
+                    tolerations: (!config.tolerations.is_empty())
+                        .then(|| config.tolerations.clone()),
                     containers: vec![Container {
                         name: "codex".to_owned(),
                         image: Some(investigation.spec.agent_image.clone()),
@@ -474,7 +495,7 @@ mod tests {
     }
 
     #[test]
-    fn agent_job_uses_investigation_scheduling() {
+    fn agent_job_uses_global_scheduling() {
         let mut investigation = Investigation::new(
             "test",
             InvestigationSpec {
@@ -487,17 +508,22 @@ mod tests {
                 },
                 mcp_servers: vec![],
                 service_account_name: "agent".to_owned(),
-                node_selector: BTreeMap::from([("workload".to_owned(), "agent".to_owned())]),
-                affinity: Some(json!({"nodeAffinity": {}})),
-                tolerations: vec![json!({"key": "agent", "operator": "Exists"})],
             },
         );
         investigation.metadata.uid = Some("test-uid".to_owned());
+        let config = AgentJobConfig {
+            node_selector: BTreeMap::from([("workload".to_owned(), "agent".to_owned())]),
+            affinity: Some(serde_json::from_value(json!({"nodeAffinity": {}})).unwrap()),
+            tolerations: vec![
+                serde_json::from_value(json!({"key": "agent", "operator": "Exists"})).unwrap(),
+            ],
+        };
 
         let pod = agent_job(
             &investigation,
             "test-agent".to_owned(),
             "investigate".to_owned(),
+            &config,
         )
         .unwrap()
         .spec
@@ -539,9 +565,6 @@ mod tests {
                 },
                 mcp_servers: vec![],
                 service_account_name: "agent".to_owned(),
-                node_selector: BTreeMap::new(),
-                affinity: None,
-                tolerations: vec![],
             },
         );
         investigation.metadata.uid = Some("old-uid".to_owned());
@@ -549,6 +572,7 @@ mod tests {
             &investigation,
             "test-agent".to_owned(),
             "investigate".to_owned(),
+            &AgentJobConfig::default(),
         )
         .unwrap();
         assert!(job_is_owned_by(&job, &investigation));
@@ -571,9 +595,6 @@ mod tests {
                 },
                 mcp_servers: vec![],
                 service_account_name: "agent".to_owned(),
-                node_selector: BTreeMap::new(),
-                affinity: None,
-                tolerations: vec![],
             },
         );
         assert_eq!(

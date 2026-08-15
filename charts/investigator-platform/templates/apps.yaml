@@ -4,6 +4,7 @@
 {{- $ctx := dict "root" $root "name" $name "app" $app -}}
 {{- $appName := include "investigator-platform.appName" $ctx -}}
 {{- $component := printf "app-%s" $name -}}
+{{- $investigationNamespace := default $root.Release.Namespace $app.investigationNamespace -}}
 {{- if $app.serviceAccount.create }}
 apiVersion: v1
 kind: ServiceAccount
@@ -19,12 +20,14 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: {{ $appName }}
+  namespace: {{ $investigationNamespace }}
 rules: {{- toYaml $app.rbac.rules | nindent 2 }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: {{ $appName }}
+  namespace: {{ $investigationNamespace }}
 roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: {{ $appName }}}
 subjects:
   - {kind: ServiceAccount, name: {{ include "investigator-platform.appServiceAccount" $ctx }}, namespace: {{ $root.Release.Namespace }}}
@@ -57,7 +60,12 @@ spec:
           image: {{ include "investigator-platform.image" (dict "root" $root "image" $app.image) | quote }}
           imagePullPolicy: {{ $app.image.pullPolicy }}
           securityContext: {{- toYaml $app.securityContext | nindent 12 }}
-          env: {{- toYaml $app.env | nindent 12 }}
+          env:
+            - name: INVESTIGATION_NAMESPACE
+              value: {{ $investigationNamespace | quote }}
+            {{- with $app.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
           {{- if $app.service.enabled }}
           ports: [{name: http, containerPort: {{ $app.service.port }}}]
           {{- end }}

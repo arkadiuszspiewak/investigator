@@ -20,6 +20,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .unwrap_or_else(|_| "investigator=info".into()),
         )
         .init();
-    controller::run(Client::try_default().await?).await;
+    controller::run(
+        Client::try_default().await?,
+        controller::AgentJobConfig::from_env()?,
+    )
+    .await;
     Ok(())
 }

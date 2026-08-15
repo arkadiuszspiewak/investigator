@@ -47,12 +47,6 @@ struct Config {
     auth: AgentAuth,
     #[serde(default)]
     mcp_servers: Vec<McpServer>,
-    #[serde(default)]
-    node_selector: std::collections::BTreeMap<String, String>,
-    #[serde(default)]
-    affinity: Option<serde_json::Value>,
-    #[serde(default)]
-    tolerations: Vec<serde_json::Value>,
 }
 
 #[tokio::main]
@@ -127,9 +121,6 @@ async fn create_investigation(
             auth: config.auth.clone(),
             mcp_servers: config.mcp_servers.clone(),
             service_account_name: config.service_account_name.clone(),
-            node_selector: config.node_selector.clone(),
-            affinity: config.affinity.clone(),
-            tolerations: config.tolerations.clone(),
         },
     );
     api.create(&PostParams::default(), &investigation).await?;
@@ -314,9 +305,6 @@ mod tests {
                 },
                 mcp_servers: vec![],
                 service_account_name: default_service_account(),
-                node_selector: Default::default(),
-                affinity: None,
-                tolerations: vec![],
             },
         );
         let mut investigation = investigation;

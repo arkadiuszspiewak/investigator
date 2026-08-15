@@ -14,18 +14,6 @@ spec:
       name: codex-auth
       key: auth.json
   serviceAccountName: investigator-agent
-  affinity:
-    nodeAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        nodeSelectorTerms:
-          - matchExpressions:
-              - key: rpi
-                operator: NotIn
-                values:
-                  - "true"
-          - matchExpressions:
-              - key: rpi
-                operator: DoesNotExist
   mcpServers:
     - name: kubernetes
       url: http://investigator-investigator-platform-kubernetes.investigator.svc.cluster.local:8080/mcp

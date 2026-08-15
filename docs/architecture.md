@@ -55,6 +55,10 @@ controller manages Investigations and Jobs. Each MCP server gets only its
 integration credentials. The Job's `spec.serviceAccountName` limits direct
 cluster actions. Queries and MCP URLs are ordinary API data and must not contain
 secrets; mount credentials from Secrets and restrict egress with NetworkPolicy.
+Node selectors, affinity, and tolerations for agent Jobs are global controller
+configuration rendered from `investigator.agentJob` Helm values. They are not
+part of the Investigation API, preventing individual clients from overriding
+cluster placement policy.
 
 ## Packaging and releases
 

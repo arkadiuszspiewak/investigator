@@ -14,9 +14,6 @@ spec:
       name: openai-api-key
       key: api-key
   serviceAccountName: investigator-agent
-  nodeSelector: {}
-  affinity: {}
-  tolerations: []
   mcpServers:
     - name: kubernetes
       url: http://investigator-investigator-platform-kubernetes.investigations.svc.cluster.local:8080/mcp
