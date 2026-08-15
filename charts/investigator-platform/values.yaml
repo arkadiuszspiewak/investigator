@@ -60,6 +60,9 @@ apps:
       # - {name: INVESTIGATION_API_KEY_SECRET, value: "openai-api-key:api-key"}
       # Configure Slack without putting its URL in values:
       # - {name: SLACK_WEBHOOK_URL, valueFrom: {secretKeyRef: {name: slack-webhook, key: url}}}
+      # Or use a Slack App. Set both values and do not set SLACK_WEBHOOK_URL:
+      # - {name: SLACK_BOT_TOKEN, valueFrom: {secretKeyRef: {name: slack-app, key: bot-token}}}
+      # - {name: SLACK_CHANNEL, value: "C0123456789"}
     rbac:
       create: true
       rules:

@@ -120,10 +120,19 @@ through the Kubernetes API. The user's kube identity needs `get`, `create`, and
 
 `investigator-alerts` accepts Alertmanager webhook payloads at `POST /alerts`,
 creates one Investigation per firing alert fingerprint, and optionally posts the
-short result to a Slack incoming webhook. Enable `apps.alerts` in the chart,
+short result through either a Slack incoming webhook or a Slack App. Enable `apps.alerts` in the chart,
 configure exactly one Investigation credential reference and MCP endpoint list,
 then point an Alertmanager webhook receiver at
 `http://<release>-investigator-platform-alerts:8080/alerts`.
+
+For incoming-webhook delivery, provide `SLACK_WEBHOOK_URL` from a Kubernetes
+Secret. For Slack App delivery, provide both `SLACK_BOT_TOKEN` (normally an
+`xoxb-` token from a Secret) and `SLACK_CHANNEL` (preferably the channel ID).
+The app needs the `chat:write` scope and must be invited to the destination
+channel; alternatively grant the additional Slack permission appropriate for
+posting to channels it has not joined. `SLACK_WEBHOOK_URL` and Slack App
+credentials are mutually exclusive. `SLACK_API_URL` can override the default
+`https://slack.com/api` endpoint.
 
 The delivery boundary is intentionally small: Alertmanager ingestion creates
 CRs, the core controller executes them, and notification delivery is isolated in

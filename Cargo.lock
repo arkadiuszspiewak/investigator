@@ -1161,6 +1161,7 @@ dependencies = [
  "investigator",
  "kube",
  "reqwest",
+ "rustls",
  "serde",
  "serde_json",
  "tokio",

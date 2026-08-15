@@ -44,6 +44,14 @@ struct Config {
     mcp_servers: String,
     #[arg(long, env = "SLACK_WEBHOOK_URL")]
     slack_webhook_url: Option<String>,
+    /// Slack App bot token (xoxb-...). Must be used with SLACK_CHANNEL.
+    #[arg(long, env = "SLACK_BOT_TOKEN")]
+    slack_bot_token: Option<String>,
+    /// Channel ID or name used by Slack App delivery.
+    #[arg(long, env = "SLACK_CHANNEL")]
+    slack_channel: Option<String>,
+    #[arg(long, env = "SLACK_API_URL", default_value = "https://slack.com/api")]
+    slack_api_url: String,
 }
 
 #[derive(Clone)]
@@ -51,6 +59,25 @@ struct AppState {
     config: Config,
     client: Client,
     http: reqwest::Client,
+    notification: Option<NotificationTarget>,
+}
+
+#[derive(Clone)]
+enum NotificationTarget {
+    SlackWebhook {
+        url: String,
+    },
+    SlackApp {
+        api_url: String,
+        bot_token: String,
+        channel: String,
+    },
+}
+
+#[derive(Deserialize)]
+struct SlackResponse {
+    ok: bool,
+    error: Option<String>,
 }
 
 #[derive(Clone, Deserialize, serde::Serialize)]
@@ -76,6 +103,11 @@ struct AlertWebhook {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // kube uses rustls with ring while reqwest enables aws-lc-rs. Feature
+    // unification therefore leaves rustls unable to choose automatically.
+    // Select one provider before either client constructs a TLS configuration.
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -84,11 +116,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
     let config = Config::parse();
     validate_auth(&config)?;
+    let notification = notification_target(&config)?;
     let address: std::net::SocketAddr = config.bind_address.parse()?;
     let state = Arc::new(AppState {
         config,
         client: Client::try_default().await?,
         http: reqwest::Client::new(),
+        notification,
     });
     let app = Router::new()
         .route("/healthz", get(|| async { StatusCode::NO_CONTENT }))
@@ -152,16 +186,13 @@ async fn investigate(
         let current = api.get(&name).await?;
         if let Some(status) = current.status {
             if status.phase.as_deref() == Some("Succeeded") {
-                if let (Some(webhook), Some(result)) =
-                    (&state.config.slack_webhook_url, status.result)
-                {
-                    state
-                        .http
-                        .post(webhook)
-                        .json(&json!({"text": format!("Alert investigation `{name}`\n{result}")}))
-                        .send()
-                        .await?
-                        .error_for_status()?;
+                if let (Some(notification), Some(result)) = (&state.notification, status.result) {
+                    send_notification(
+                        &state.http,
+                        notification,
+                        &format!("Alert investigation `{name}`\n{result}"),
+                    )
+                    .await?;
                 }
                 return Ok(());
             }
@@ -171,6 +202,65 @@ async fn investigate(
         }
         tokio::time::sleep(Duration::from_secs(5)).await;
     }
+}
+
+fn notification_target(config: &Config) -> Result<Option<NotificationTarget>, &'static str> {
+    match (
+        &config.slack_webhook_url,
+        &config.slack_bot_token,
+        &config.slack_channel,
+    ) {
+        (None, None, None) => Ok(None),
+        (Some(url), None, None) => Ok(Some(NotificationTarget::SlackWebhook { url: url.clone() })),
+        (None, Some(bot_token), Some(channel)) => Ok(Some(NotificationTarget::SlackApp {
+            api_url: config.slack_api_url.trim_end_matches('/').to_owned(),
+            bot_token: bot_token.clone(),
+            channel: channel.clone(),
+        })),
+        (Some(_), Some(_), _) | (Some(_), _, Some(_)) => {
+            Err("configure either SLACK_WEBHOOK_URL or the Slack App settings, not both")
+        }
+        _ => Err("Slack App delivery requires both SLACK_BOT_TOKEN and SLACK_CHANNEL"),
+    }
+}
+
+async fn send_notification(
+    http: &reqwest::Client,
+    target: &NotificationTarget,
+    text: &str,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    match target {
+        NotificationTarget::SlackWebhook { url } => {
+            http.post(url)
+                .json(&json!({"text": text}))
+                .send()
+                .await?
+                .error_for_status()?;
+        }
+        NotificationTarget::SlackApp {
+            api_url,
+            bot_token,
+            channel,
+        } => {
+            let response = http
+                .post(format!("{api_url}/chat.postMessage"))
+                .bearer_auth(bot_token)
+                .json(&json!({"channel": channel, "text": text}))
+                .send()
+                .await?
+                .error_for_status()?
+                .json::<SlackResponse>()
+                .await?;
+            if !response.ok {
+                return Err(format!(
+                    "Slack chat.postMessage failed: {}",
+                    response.error.as_deref().unwrap_or("unknown_error")
+                )
+                .into());
+            }
+        }
+    }
+    Ok(())
 }
 
 fn validate_auth(config: &Config) -> Result<(), &'static str> {
@@ -216,4 +306,50 @@ fn dns_label(value: &str) -> String {
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
         .collect();
     value.trim_matches('-').chars().take(50).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn config() -> Config {
+        Config {
+            bind_address: "127.0.0.1:8080".into(),
+            namespace: "default".into(),
+            query: "investigate {{alert}}".into(),
+            agent_image: "agent:test".into(),
+            service_account: "agent".into(),
+            api_key_secret: Some("openai:api-key".into()),
+            auth_json_secret: None,
+            mcp_servers: "[]".into(),
+            slack_webhook_url: None,
+            slack_bot_token: None,
+            slack_channel: None,
+            slack_api_url: "https://slack.com/api".into(),
+        }
+    }
+
+    #[test]
+    fn accepts_slack_app_token_and_channel() {
+        let mut config = config();
+        config.slack_bot_token = Some("xoxb-test".into());
+        config.slack_channel = Some("C123".into());
+        assert!(matches!(
+            notification_target(&config),
+            Ok(Some(NotificationTarget::SlackApp { .. }))
+        ));
+    }
+
+    #[test]
+    fn rejects_partial_or_mixed_slack_configuration() {
+        let mut partial = config();
+        partial.slack_bot_token = Some("xoxb-test".into());
+        assert!(notification_target(&partial).is_err());
+
+        let mut mixed = config();
+        mixed.slack_webhook_url = Some("https://hooks.slack.test".into());
+        mixed.slack_bot_token = Some("xoxb-test".into());
+        mixed.slack_channel = Some("C123".into());
+        assert!(notification_target(&mixed).is_err());
+    }
 }
