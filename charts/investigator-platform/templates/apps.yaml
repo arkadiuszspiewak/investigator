@@ -1,0 +1,87 @@
+{{- $root := . -}}
+{{- range $name, $app := .Values.apps }}
+{{- if $app.enabled }}
+{{- $ctx := dict "root" $root "name" $name "app" $app -}}
+{{- $appName := include "investigator-platform.appName" $ctx -}}
+{{- $component := printf "app-%s" $name -}}
+{{- if $app.serviceAccount.create }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "investigator-platform.appServiceAccount" $ctx }}
+  {{- with $app.serviceAccount.annotations }}
+  annotations: {{- toYaml . | nindent 4 }}
+  {{- end }}
+---
+{{- end }}
+{{- if $app.rbac.create }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $appName }}
+rules: {{- toYaml $app.rbac.rules | nindent 2 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $appName }}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: {{ $appName }}}
+subjects:
+  - {kind: ServiceAccount, name: {{ include "investigator-platform.appServiceAccount" $ctx }}, namespace: {{ $root.Release.Namespace }}}
+---
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $appName }}
+spec:
+  replicas: {{ $app.replicas }}
+  selector:
+    matchLabels: {app.kubernetes.io/name: {{ include "investigator-platform.name" $root }}, app.kubernetes.io/instance: {{ $root.Release.Name }}, app.kubernetes.io/component: {{ $component }}}
+  template:
+    metadata:
+      annotations: {{- toYaml $app.podAnnotations | nindent 8 }}
+      labels:
+        app.kubernetes.io/name: {{ include "investigator-platform.name" $root }}
+        app.kubernetes.io/instance: {{ $root.Release.Name }}
+        app.kubernetes.io/component: {{ $component }}
+        {{- with $app.podLabels }}{{- toYaml . | nindent 8 }}{{- end }}
+    spec:
+      serviceAccountName: {{ include "investigator-platform.appServiceAccount" $ctx }}
+      {{- with $app.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext: {{- toYaml $app.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ $name }}
+          image: {{ include "investigator-platform.image" (dict "root" $root "image" $app.image) | quote }}
+          imagePullPolicy: {{ $app.image.pullPolicy }}
+          securityContext: {{- toYaml $app.securityContext | nindent 12 }}
+          env: {{- toYaml $app.env | nindent 12 }}
+          {{- if $app.service.enabled }}
+          ports: [{name: http, containerPort: {{ $app.service.port }}}]
+          {{- end }}
+          resources: {{- toYaml $app.resources | nindent 12 }}
+      {{- with $app.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $app.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $app.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+{{- if $app.service.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $appName }}
+spec:
+  type: {{ $app.service.type }}
+  selector: {app.kubernetes.io/name: {{ include "investigator-platform.name" $root }}, app.kubernetes.io/instance: {{ $root.Release.Name }}, app.kubernetes.io/component: {{ $component }}}
+  ports: [{name: http, port: {{ $app.service.port }}, targetPort: http}]
+---
+{{- end }}
+{{- end }}
+{{- end }}

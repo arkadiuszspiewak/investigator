@@ -1,0 +1,15 @@
+name: Build investigator-alerts
+on:
+  pull_request:
+    paths: [apps/investigator-alerts/**, apps/investigator/src/crd.rs, Cargo.toml, Cargo.lock, docker/Dockerfile.app, .github/workflows/_build-app.yml, .github/workflows/build-investigator-alerts.yml]
+  push:
+    branches: [main]
+    tags: [investigator-alerts-v*]
+    paths: [apps/investigator-alerts/**, apps/investigator/src/crd.rs, Cargo.toml, Cargo.lock, docker/Dockerfile.app, .github/workflows/_build-app.yml, .github/workflows/build-investigator-alerts.yml]
+  workflow_dispatch:
+jobs:
+  image:
+    uses: ./.github/workflows/_build-app.yml
+    permissions: {contents: read, packages: write}
+    with: {package: investigator-alerts, binary: investigator-alerts, image: investigator-alerts}
+    secrets: inherit

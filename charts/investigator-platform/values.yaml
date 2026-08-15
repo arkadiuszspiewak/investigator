@@ -37,6 +37,44 @@ investigator:
   rbac:
     create: true
 
+# Long-running applications that consume the Investigation API. Copy an entry
+# to add future webhook, scheduler, or chat integrations without new templates.
+apps:
+  alerts:
+    enabled: false
+    image: {repository: ghcr.io/arkadiuszspiewak/investigator-alerts, tag: "", digest: "", pullPolicy: IfNotPresent}
+    imagePullSecrets: []
+    replicas: 1
+    serviceAccount: {create: true, name: "", annotations: {}}
+    service: {enabled: true, type: ClusterIP, port: 8080}
+    env:
+      - name: INVESTIGATION_NAMESPACE
+        valueFrom: {fieldRef: {fieldPath: metadata.namespace}}
+      - name: INVESTIGATION_QUERY
+        value: "Investigate this active alert. Explain what happened, why it happened, and how to fix it. Alert: {{alert}}"
+      - name: INVESTIGATION_SERVICE_ACCOUNT
+        value: investigator-agent
+      - name: INVESTIGATION_MCP_SERVERS
+        value: '[]'
+      # Add exactly one credential reference, for example:
+      # - {name: INVESTIGATION_API_KEY_SECRET, value: "openai-api-key:api-key"}
+      # Configure Slack without putting its URL in values:
+      # - {name: SLACK_WEBHOOK_URL, valueFrom: {secretKeyRef: {name: slack-webhook, key: url}}}
+    rbac:
+      create: true
+      rules:
+        - apiGroups: [investigator.openai.com]
+          resources: [investigations]
+          verbs: [get, create]
+    podAnnotations: {}
+    podLabels: {}
+    podSecurityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, seccompProfile: {type: RuntimeDefault}}
+    securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+    resources: {requests: {cpu: 25m, memory: 48Mi}, limits: {cpu: 250m, memory: 128Mi}}
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+
 # Copy an entry to add a provider. Every enabled item renders independently.
 mcpServers:
   kubernetes:

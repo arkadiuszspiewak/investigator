@@ -2,6 +2,18 @@
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
+{{- define "investigator-platform.appName" -}}
+{{- printf "%s-%s" (include "investigator-platform.fullname" .root) .name | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{- define "investigator-platform.appServiceAccount" -}}
+{{- if .app.serviceAccount.create -}}
+{{- default (include "investigator-platform.appName" .) .app.serviceAccount.name | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- required (printf "apps.%s.serviceAccount.name is required when create=false" .name) .app.serviceAccount.name | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+{{- end -}}
+
 {{- define "investigator-platform.fullname" -}}
 {{- if .Values.fullnameOverride -}}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}

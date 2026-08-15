@@ -1,0 +1,13 @@
+[package]
+name = "investigator-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+clap.workspace = true
+investigator = { path = "../investigator" }
+kube.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true

@@ -1,14 +1,17 @@
 # Architecture
 
 ```text
-Investigation CR ──> investigator controller ──> one Codex Job
+CLI ───────────────┐
+                   ├──> Investigation CR ──> investigator controller ──> Codex Job per turn
+Alertmanager ─> investigator-alerts ─┘                                  │
+                   └──────────────────────────────────────────────> Slack
                                                     │
                     ┌───────────────────────────────┼──────────────┐
                     ▼                               ▼              ▼
               kubernetes-mcp                 prometheus-mcp    argo-mcp
 ```
 
-- `investigator` is a Kubernetes controller, not an MCP server and not the LLM.
+- `investigator` is the core Kubernetes controller, not an MCP server and not the LLM.
   It converts desired state into Jobs and reports Job state on the CR.
 - The agent image contains Codex plus an entrypoint that consumes
   `INVESTIGATOR_MCP_SERVERS`, configures Codex, and executes the query.
@@ -20,6 +23,18 @@ Investigation CR ──> investigator controller ──> one Codex Job
   and status through read-only Alertmanager API calls.
 - `mcp-runtime` contains transport mechanics only. Provider clients and tool
   schemas stay with their server.
+- `investigator-cli` is a local conversational client. It appends questions to
+  the CR rather than running Codex locally.
+- `investigator-alerts` is an Alertmanager webhook adapter and notification
+  boundary. Alert fingerprints make Investigation creation idempotent.
+
+## Conversation workflow
+
+The initial prompt remains `spec.query`. Clients append stable `{id, query}`
+items to `spec.questions`; they never rewrite earlier turns. The controller
+answers the first unanswered item, includes prior question/answer pairs as
+context, and appends `{questionId, result}` to `status.answers`. Separate owned
+Jobs (`-agent`, then `-agent-qN`) preserve auditability and retry isolation.
 
 ## Adding an MCP server
 
@@ -30,7 +45,7 @@ name and URL; no controller change is required.
 
 ## Lifecycle and security
 
-The initial controller creates one owned Job, observes completion or failure,
+The controller creates one owned Job per conversation turn, observes completion or failure,
 and publishes status. A production iteration should add explicit re-run and
 cancellation semantics, finalizers, conditions/timestamps, result persistence,
 timeouts, resource limits, and admission validation.
@@ -46,8 +61,8 @@ secrets; mount credentials from Secrets and restrict egress with NetworkPolicy.
 `charts/investigator-platform` is the only chart. Templates iterate over the
 `mcpServers` map, while every server retains an independent image and release
 cadence. `docker/Dockerfile.server` is the shared Rust server recipe;
-`docker/Dockerfile.investigator` is separate so the controller never inherits
-the MCP server's `--http` command.
+`docker/Dockerfile.app` builds any Rust application by package and binary name;
+MCP servers retain their separate `--http` runtime contract.
 
 Each server directory has a small path-filtered workflow caller. All callers
 invoke `_build-server.yml`, keeping registry login, tagging, caching, and image

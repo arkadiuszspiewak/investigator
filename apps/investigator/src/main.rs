@@ -1,5 +1,6 @@
 mod controller;
-mod crd;
+
+use investigator::crd;
 
 use kube::{Client, CustomResourceExt};
 

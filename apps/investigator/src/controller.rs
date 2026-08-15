@@ -19,7 +19,7 @@ use kube::{
 use serde_json::json;
 use thiserror::Error;
 
-use crate::crd::{AgentAuth, Investigation, InvestigationStatus};
+use investigator::crd::{AgentAuth, Investigation, InvestigationAnswer, InvestigationStatus};
 
 #[derive(Clone)]
 struct Context {
@@ -61,12 +61,28 @@ async fn reconcile(
     let namespace = investigation
         .namespace()
         .ok_or(ReconcileError::MissingNamespace)?;
-    let job_name = format!("{}-agent", investigation.name_any());
+    let previous = investigation.status.clone().unwrap_or_default();
+    let turn = next_turn(&investigation, &previous);
+    if turn.is_none() {
+        let status = InvestigationStatus {
+            phase: Some("Succeeded".to_owned()),
+            observed_generation: investigation.metadata.generation,
+            ..previous
+        };
+        patch_status(&context.client, &namespace, &investigation, status).await?;
+        return Ok(Action::requeue(Duration::from_secs(30)));
+    }
+    let turn = turn.unwrap();
+    let job_name = if turn == 0 {
+        format!("{}-agent", investigation.name_any())
+    } else {
+        format!("{}-agent-q{turn}", investigation.name_any())
+    };
     let jobs = Api::<Job>::namespaced(context.client.clone(), &namespace);
 
     let existing_job = jobs.get_opt(&job_name).await?;
     if let Some(job) = existing_job.as_ref()
-        && (!job_is_owned_by(job, &investigation) || investigation_spec_changed(&investigation))
+        && !job_is_owned_by(job, &investigation)
     {
         jobs.delete(&job_name, &DeleteParams::default()).await?;
         return Ok(Action::requeue(Duration::from_secs(1)));
@@ -79,28 +95,53 @@ async fn reconcile(
         None => {
             jobs.create(
                 &PostParams::default(),
-                &agent_job(&investigation, job_name.clone())?,
+                &agent_job(
+                    &investigation,
+                    job_name.clone(),
+                    conversation_prompt(&investigation, &previous, turn),
+                )?,
             )
             .await?;
             "Pending"
         }
     };
-    let result = if matches!(phase, "Succeeded" | "Failed") {
+    let completed_result = if matches!(phase, "Succeeded" | "Failed") {
         agent_result(&context.client, &namespace, &job_name).await?
     } else {
         None
     };
 
-    let status = InvestigationStatus {
+    let mut status = InvestigationStatus {
         phase: Some(phase.to_owned()),
         job_name: Some(job_name),
         message: None,
-        result,
+        result: previous.result,
+        answers: previous.answers,
         observed_generation: investigation.metadata.generation,
     };
+    if phase == "Succeeded" {
+        if turn == 0 {
+            status.result = completed_result;
+        } else if let Some(result) = completed_result {
+            status.answers.push(InvestigationAnswer {
+                question_id: investigation.spec.questions[turn - 1].id.clone(),
+                result,
+            });
+        }
+    }
+    patch_status(&context.client, &namespace, &investigation, status).await?;
+
+    Ok(Action::requeue(Duration::from_secs(10)))
+}
+
+async fn patch_status(
+    client: &Client,
+    namespace: &str,
+    investigation: &Investigation,
+    status: InvestigationStatus,
+) -> Result<(), ReconcileError> {
     if investigation.status.as_ref() != Some(&status) {
-        let investigations = Api::<Investigation>::namespaced(context.client.clone(), &namespace);
-        investigations
+        Api::<Investigation>::namespaced(client.clone(), namespace)
             .patch_status(
                 &investigation.name_any(),
                 &PatchParams::default(),
@@ -108,8 +149,47 @@ async fn reconcile(
             )
             .await?;
     }
+    Ok(())
+}
 
-    Ok(Action::requeue(Duration::from_secs(10)))
+fn next_turn(investigation: &Investigation, status: &InvestigationStatus) -> Option<usize> {
+    if status.result.is_none() {
+        return Some(0);
+    }
+    investigation
+        .spec
+        .questions
+        .iter()
+        .position(|question| !status.answers.iter().any(|a| a.question_id == question.id))
+        .map(|index| index + 1)
+}
+
+fn conversation_prompt(
+    investigation: &Investigation,
+    status: &InvestigationStatus,
+    turn: usize,
+) -> String {
+    if turn == 0 {
+        return investigation.spec.query.clone();
+    }
+    let mut prompt = format!(
+        "Continue this investigation using the prior conversation as context.\n\nInitial question:\n{}\n\nInitial answer:\n{}",
+        investigation.spec.query,
+        status.result.as_deref().unwrap_or_default()
+    );
+    for question in investigation.spec.questions.iter().take(turn - 1) {
+        if let Some(answer) = status.answers.iter().find(|a| a.question_id == question.id) {
+            prompt.push_str(&format!(
+                "\n\nFollow-up question:\n{}\n\nAnswer:\n{}",
+                question.query, answer.result
+            ));
+        }
+    }
+    prompt.push_str(&format!(
+        "\n\nNew follow-up question:\n{}",
+        investigation.spec.questions[turn - 1].query
+    ));
+    prompt
 }
 
 async fn agent_result(
@@ -140,15 +220,6 @@ fn pod_result(pod: &Pod) -> Option<String> {
         .filter(|message| !message.is_empty())
 }
 
-fn investigation_spec_changed(investigation: &Investigation) -> bool {
-    investigation.status.is_some()
-        && investigation
-            .status
-            .as_ref()
-            .and_then(|status| status.observed_generation)
-            != investigation.metadata.generation
-}
-
 fn job_is_owned_by(job: &Job, investigation: &Investigation) -> bool {
     investigation.metadata.uid.as_ref().is_some_and(|uid| {
         job.metadata
@@ -158,7 +229,11 @@ fn job_is_owned_by(job: &Job, investigation: &Investigation) -> bool {
     })
 }
 
-fn agent_job(investigation: &Investigation, name: String) -> Result<Job, ReconcileError> {
+fn agent_job(
+    investigation: &Investigation,
+    name: String,
+    prompt: String,
+) -> Result<Job, ReconcileError> {
     let owner_reference = investigation
         .controller_owner_ref(&())
         .ok_or(ReconcileError::MissingOwnerReference)?;
@@ -213,7 +288,7 @@ fn agent_job(investigation: &Investigation, name: String) -> Result<Job, Reconci
                             "--skip-git-repo-check".to_owned(),
                             "--output-last-message".to_owned(),
                             "/dev/termination-log".to_owned(),
-                            investigation.spec.query.clone(),
+                            prompt,
                         ]),
                         env: Some(vec![
                             EnvVar {
@@ -334,7 +409,7 @@ fn error_policy(_: Arc<Investigation>, error: &ReconcileError, _: Arc<Context>) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::crd::{InvestigationSpec, SecretKeyRef};
+    use investigator::crd::{InvestigationSpec, SecretKeyRef};
     use std::collections::BTreeMap;
 
     fn secret(name: &str, key: &str) -> SecretKeyRef {
@@ -404,6 +479,7 @@ mod tests {
             "test",
             InvestigationSpec {
                 query: "investigate".to_owned(),
+                questions: vec![],
                 agent_image: "agent:test".to_owned(),
                 auth: AgentAuth {
                     api_key_secret_ref: Some(secret("openai", "api-key")),
@@ -418,13 +494,17 @@ mod tests {
         );
         investigation.metadata.uid = Some("test-uid".to_owned());
 
-        let pod = agent_job(&investigation, "test-agent".to_owned())
-            .unwrap()
-            .spec
-            .unwrap()
-            .template
-            .spec
-            .unwrap();
+        let pod = agent_job(
+            &investigation,
+            "test-agent".to_owned(),
+            "investigate".to_owned(),
+        )
+        .unwrap()
+        .spec
+        .unwrap()
+        .template
+        .spec
+        .unwrap();
         assert_eq!(pod.node_selector.unwrap()["workload"], "agent");
         assert!(pod.affinity.unwrap().node_affinity.is_some());
         assert_eq!(pod.tolerations.unwrap()[0].key.as_deref(), Some("agent"));
@@ -451,6 +531,7 @@ mod tests {
             "test",
             InvestigationSpec {
                 query: "investigate".to_owned(),
+                questions: vec![],
                 agent_image: "agent:test".to_owned(),
                 auth: AgentAuth {
                     api_key_secret_ref: Some(secret("openai", "api-key")),
@@ -464,7 +545,12 @@ mod tests {
             },
         );
         investigation.metadata.uid = Some("old-uid".to_owned());
-        let job = agent_job(&investigation, "test-agent".to_owned()).unwrap();
+        let job = agent_job(
+            &investigation,
+            "test-agent".to_owned(),
+            "investigate".to_owned(),
+        )
+        .unwrap();
         assert!(job_is_owned_by(&job, &investigation));
 
         investigation.metadata.uid = Some("new-uid".to_owned());
@@ -472,11 +558,12 @@ mod tests {
     }
 
     #[test]
-    fn detects_investigation_spec_generation_changes() {
-        let mut investigation = Investigation::new(
+    fn selects_initial_then_follow_up_turns() {
+        let investigation = Investigation::new(
             "test",
             InvestigationSpec {
                 query: "investigate".to_owned(),
+                questions: vec![],
                 agent_image: "agent:test".to_owned(),
                 auth: AgentAuth {
                     api_key_secret_ref: Some(secret("openai", "api-key")),
@@ -489,15 +576,15 @@ mod tests {
                 tolerations: vec![],
             },
         );
-        investigation.metadata.generation = Some(2);
-        investigation.status = Some(InvestigationStatus {
-            observed_generation: Some(1),
+        assert_eq!(
+            next_turn(&investigation, &InvestigationStatus::default()),
+            Some(0)
+        );
+        let status = InvestigationStatus {
+            result: Some("done".to_owned()),
             ..Default::default()
-        });
-
-        assert!(investigation_spec_changed(&investigation));
-        investigation.status.as_mut().unwrap().observed_generation = Some(2);
-        assert!(!investigation_spec_changed(&investigation));
+        };
+        assert_eq!(next_turn(&investigation, &status), None);
     }
 
     #[test]

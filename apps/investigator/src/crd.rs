@@ -18,6 +18,10 @@ pub struct InvestigationSpec {
     /// The task given to the Codex agent.
     pub query: String,
 
+    /// Follow-up questions, appended by interactive clients after the initial result.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub questions: Vec<InvestigationQuestion>,
+
     /// Container image containing Codex. The controller never runs the LLM itself.
     #[serde(default = "default_agent_image")]
     pub agent_image: String,
@@ -44,6 +48,14 @@ pub struct InvestigationSpec {
     /// Kubernetes taint tolerations applied to the agent Job pod.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tolerations: Vec<serde_json::Value>,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InvestigationQuestion {
+    /// Client-generated stable identifier used to correlate the answer.
+    pub id: String,
+    pub query: String,
 }
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
@@ -79,7 +91,16 @@ pub struct InvestigationStatus {
     pub job_name: Option<String>,
     pub message: Option<String>,
     pub result: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub answers: Vec<InvestigationAnswer>,
     pub observed_generation: Option<i64>,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InvestigationAnswer {
+    pub question_id: String,
+    pub result: String,
 }
 
 fn default_agent_image() -> String {

@@ -6,7 +6,8 @@ on:
       - apps/investigator/**
       - Cargo.toml
       - Cargo.lock
-      - docker/Dockerfile.investigator
+      - docker/Dockerfile.app
+      - .github/workflows/_build-app.yml
       - .github/workflows/build-investigator.yml
   push:
     branches: [main]
@@ -15,43 +16,14 @@ on:
       - apps/investigator/**
       - Cargo.toml
       - Cargo.lock
-      - docker/Dockerfile.investigator
+      - docker/Dockerfile.app
+      - .github/workflows/_build-app.yml
       - .github/workflows/build-investigator.yml
   workflow_dispatch:
 
-permissions:
-  contents: read
-  packages: write
-
 jobs:
   image:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - name: Log in to GHCR
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository_owner }}/investigator
-          tags: |
-            type=sha,prefix=sha-
-            type=ref,event=branch
-            type=semver,pattern={{version}},match=^investigator-v(.*)$
-            type=ref,event=pr
-      - uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: docker/Dockerfile.investigator
-          platforms: linux/amd64
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=investigator
-          cache-to: type=gha,mode=max,scope=investigator
+    uses: ./.github/workflows/_build-app.yml
+    permissions: {contents: read, packages: write}
+    with: {package: investigator, binary: investigator, image: investigator}
+    secrets: inherit
