@@ -119,7 +119,7 @@ through the Kubernetes API. The user's kube identity needs `get`, `create`, and
 ## Alert-driven investigations
 
 `investigator-alerts` accepts Alertmanager webhook payloads at `POST /alerts`,
-creates one Investigation per firing alert fingerprint, and optionally posts the
+creates one Investigation per firing episode (fingerprint plus `startsAt`), and optionally posts the
 short result through either a Slack incoming webhook or a Slack App. Enable `apps.alerts` in the chart,
 configure exactly one Investigation credential reference and MCP endpoint list,
 then point an Alertmanager webhook receiver at

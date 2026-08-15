@@ -176,12 +176,7 @@ async fn investigate(
     alert: Alert,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let api = Api::<Investigation>::namespaced(state.client.clone(), &state.config.namespace);
-    let suffix = if alert.fingerprint.is_empty() {
-        stable_alert_key(&alert)
-    } else {
-        alert.fingerprint.clone()
-    };
-    let name = format!("alert-{}", dns_label(&suffix));
+    let name = alert_investigation_name(&alert);
     let serialized = serde_json::to_string_pretty(&alert)?;
     let investigation = Investigation::new(
         &name,
@@ -388,16 +383,26 @@ fn secret_ref(value: &str) -> Result<SecretKeyRef, &'static str> {
         key: key.into(),
     })
 }
-fn stable_alert_key(alert: &Alert) -> String {
-    format!(
-        "{}-{}",
+fn alert_investigation_name(alert: &Alert) -> String {
+    let identity = if alert.fingerprint.is_empty() {
         alert
             .labels
             .get("alertname")
             .map(String::as_str)
-            .unwrap_or("unknown"),
-        alert.starts_at
-    )
+            .unwrap_or("unknown")
+    } else {
+        &alert.fingerprint
+    };
+
+    // Alertmanager keeps startsAt stable while an alert continuously fires, but
+    // changes it when the same label set fires again after resolving. Put it
+    // first so dns_label's length limit preserves the episode discriminator.
+    let episode = if alert.starts_at.is_empty() {
+        identity.to_owned()
+    } else {
+        format!("{}-{identity}", alert.starts_at)
+    };
+    format!("alert-{}", dns_label(&episode))
 }
 fn dns_label(value: &str) -> String {
     let value: String = value
@@ -428,6 +433,39 @@ mod tests {
             slack_api_url: "https://slack.com/api".into(),
             relay_mode: false,
         }
+    }
+
+    fn alert(fingerprint: &str, starts_at: &str) -> Alert {
+        Alert {
+            status: "firing".into(),
+            labels: BTreeMap::from([("alertname".into(), "HighErrorRate".into())]),
+            annotations: BTreeMap::new(),
+            fingerprint: fingerprint.into(),
+            starts_at: starts_at.into(),
+            generator_url: String::new(),
+        }
+    }
+
+    #[test]
+    fn repeated_delivery_for_same_firing_episode_has_same_name() {
+        let first = alert("0625dac3f3a7ec87", "2026-08-15T17:25:00Z");
+        let repeat = alert("0625dac3f3a7ec87", "2026-08-15T17:25:00Z");
+
+        assert_eq!(
+            alert_investigation_name(&first),
+            alert_investigation_name(&repeat)
+        );
+    }
+
+    #[test]
+    fn later_firing_episode_has_different_name() {
+        let first = alert("0625dac3f3a7ec87", "2026-08-15T17:25:00Z");
+        let refire = alert("0625dac3f3a7ec87", "2026-08-16T09:10:00Z");
+
+        assert_ne!(
+            alert_investigation_name(&first),
+            alert_investigation_name(&refire)
+        );
     }
 
     #[test]

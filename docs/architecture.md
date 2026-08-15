@@ -26,7 +26,9 @@ Alertmanager ─> investigator-alerts ─┘                                  �
 - `investigator-cli` is a local conversational client. It appends questions to
   the CR rather than running Codex locally.
 - `investigator-alerts` is an Alertmanager webhook adapter and notification
-  boundary. Alert fingerprints make Investigation creation idempotent.
+  boundary. Alert fingerprints combined with `startsAt` make Investigation
+  creation idempotent within a continuous firing episode while allowing a new
+  Investigation when the same alert fires again after resolving.
 
 ## Conversation workflow
 
