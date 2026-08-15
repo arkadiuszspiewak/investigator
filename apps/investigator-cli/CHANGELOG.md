@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.6](https://github.com/arkadiuszspiewak/investigator/compare/investigator-cli-v0.1.5...investigator-cli-v0.1.6) (2026-08-15)
+
+
+### Bug Fixes
+
+* agent image move to helm values ([ec45374](https://github.com/arkadiuszspiewak/investigator/commit/ec45374a71b6156c4876f6a24675cd64ca30ceb3))
+
 ## [0.1.5](https://github.com/arkadiuszspiewak/investigator/compare/investigator-cli-v0.1.4...investigator-cli-v0.1.5) (2026-08-15)
 
 

@@ -2,7 +2,7 @@ apiVersion: v2
 name: investigator-platform
 description: Codex investigator controller and independently configurable MCP servers
 type: application
-version: 0.1.11
+version: 0.1.12
 appVersion: "0.1.11"
 annotations:
   artifacthub.io/prerelease: "true"
