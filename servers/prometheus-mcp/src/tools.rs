@@ -289,9 +289,9 @@ fn validate_label_name(label: &str) -> Result<(), AppError> {
     {
         Ok(())
     } else {
-        Err(AppError::Prometheus(format!(
-            "invalid Prometheus label name {label:?}"
-        )))
+        Err(AppError::InvalidLabelName {
+            label: label.to_owned(),
+        })
     }
 }
 

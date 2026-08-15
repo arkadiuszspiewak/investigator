@@ -3,14 +3,22 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum AppError {
-    #[error("invalid Prometheus configuration: {0}")]
-    Configuration(String),
+    #[error("PROMETHEUS_URL is required")]
+    MissingUrl,
+    #[error("PROMETHEUS_URL is not a valid URL: {0}")]
+    InvalidUrl(#[source] url::ParseError),
+    #[error("PROMETHEUS_TIMEOUT_SECONDS must be an integer: {0}")]
+    InvalidTimeout(#[source] std::num::ParseIntError),
+    #[error("PROMETHEUS_TIMEOUT_SECONDS must be greater than zero")]
+    ZeroTimeout,
 
     #[error("Prometheus request failed: {0}")]
     Request(#[from] reqwest::Error),
 
-    #[error("Prometheus API error: {0}")]
-    Prometheus(String),
+    #[error("Prometheus API error ({kind}): {message}")]
+    PrometheusApi { kind: String, message: String },
+    #[error("invalid Prometheus label name {label:?}")]
+    InvalidLabelName { label: String },
 
     #[error(transparent)]
     Transport(#[from] mcp_runtime::TransportError),

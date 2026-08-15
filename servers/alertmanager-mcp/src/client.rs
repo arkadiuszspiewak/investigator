@@ -14,25 +14,16 @@ pub struct AlertmanagerClient {
 
 impl AlertmanagerClient {
     pub fn from_env() -> Result<Self, AppError> {
-        let base_url = env::var("ALERTMANAGER_URL")
-            .map_err(|_| AppError::Configuration("ALERTMANAGER_URL is required".to_owned()))?;
+        let base_url = env::var("ALERTMANAGER_URL").map_err(|_| AppError::MissingUrl)?;
         let base_url = base_url.trim_end_matches('/').to_owned();
-        reqwest::Url::parse(&base_url).map_err(|error| {
-            AppError::Configuration(format!("ALERTMANAGER_URL is not a valid URL: {error}"))
-        })?;
+        reqwest::Url::parse(&base_url).map_err(AppError::InvalidUrl)?;
 
         let timeout = env::var("ALERTMANAGER_TIMEOUT_SECONDS")
             .unwrap_or_else(|_| "30".to_owned())
             .parse::<u64>()
-            .map_err(|error| {
-                AppError::Configuration(format!(
-                    "ALERTMANAGER_TIMEOUT_SECONDS must be an integer: {error}"
-                ))
-            })?;
+            .map_err(AppError::InvalidTimeout)?;
         if timeout == 0 {
-            return Err(AppError::Configuration(
-                "ALERTMANAGER_TIMEOUT_SECONDS must be greater than zero".to_owned(),
-            ));
+            return Err(AppError::ZeroTimeout);
         }
 
         Ok(Self {

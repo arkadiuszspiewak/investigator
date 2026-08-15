@@ -1,3 +1,5 @@
+mod error;
+
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
 use axum::{
@@ -7,6 +9,7 @@ use axum::{
     routing::{get, post},
 };
 use clap::Parser;
+use error::{AppError, ConfigurationError};
 use investigator::crd::{AgentAuth, Investigation, InvestigationSpec, McpServer, SecretKeyRef};
 use kube::{
     Api, Client,
@@ -124,7 +127,7 @@ struct AlertWebhook {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), AppError> {
     // kube uses rustls with ring while reqwest enables aws-lc-rs. Feature
     // unification therefore leaves rustls unable to choose automatically.
     // Select one provider before either client constructs a TLS configuration.
@@ -171,10 +174,7 @@ async fn receive_alerts(
     StatusCode::ACCEPTED
 }
 
-async fn investigate(
-    state: Arc<AppState>,
-    alert: Alert,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn investigate(state: Arc<AppState>, alert: Alert) -> Result<(), AppError> {
     let api = Api::<Investigation>::namespaced(state.client.clone(), &state.config.namespace);
     let name = alert_investigation_name(&alert);
     let serialized = serde_json::to_string_pretty(&alert)?;
@@ -198,10 +198,13 @@ async fn investigate(
         Err(error) => return Err(error.into()),
     }
     let relay_thread = if state.config.relay_mode {
-        let notification = state.notification.as_ref().expect("validated relay target");
+        let notification = state
+            .notification
+            .as_ref()
+            .ok_or(AppError::MissingRelayTarget)?;
         let message = send_notification(&state.http, notification, &relay_alert_text(&alert), None)
             .await?
-            .expect("Slack App returns a message reference");
+            .ok_or(AppError::MissingSlackMessage)?;
         if let Err(error) = api
             .patch(
                 &name,
@@ -240,7 +243,7 @@ async fn investigate(
                 return Ok(());
             }
             if status.phase.as_deref() == Some("Failed") {
-                return Err(format!("investigation {name} failed").into());
+                return Err(AppError::InvestigationFailed { name });
             }
         }
         tokio::time::sleep(Duration::from_secs(5)).await;
@@ -250,11 +253,9 @@ async fn investigate(
 fn validate_relay_mode(
     config: &Config,
     target: Option<&NotificationTarget>,
-) -> Result<(), &'static str> {
+) -> Result<(), ConfigurationError> {
     if config.relay_mode && !matches!(target, Some(NotificationTarget::SlackApp { .. })) {
-        return Err(
-            "RELAY_MODE requires SLACK_BOT_TOKEN and SLACK_CHANNEL; Slack webhooks cannot create reliable threads",
-        );
+        return Err(ConfigurationError::RelayRequiresSlackApp);
     }
     Ok(())
 }
@@ -288,7 +289,7 @@ fn relay_alert_text(alert: &Alert) -> String {
     )
 }
 
-fn notification_target(config: &Config) -> Result<Option<NotificationTarget>, &'static str> {
+fn notification_target(config: &Config) -> Result<Option<NotificationTarget>, ConfigurationError> {
     match (
         &config.slack_webhook_url,
         &config.slack_bot_token,
@@ -302,9 +303,9 @@ fn notification_target(config: &Config) -> Result<Option<NotificationTarget>, &'
             channel: channel.clone(),
         })),
         (Some(_), Some(_), _) | (Some(_), _, Some(_)) => {
-            Err("configure either SLACK_WEBHOOK_URL or the Slack App settings, not both")
+            Err(ConfigurationError::ConflictingSlackSettings)
         }
-        _ => Err("Slack App delivery requires both SLACK_BOT_TOKEN and SLACK_CHANNEL"),
+        _ => Err(ConfigurationError::IncompleteSlackAppSettings),
     }
 }
 
@@ -313,7 +314,7 @@ async fn send_notification(
     target: &NotificationTarget,
     text: &str,
     thread_ts: Option<&str>,
-) -> Result<Option<SlackMessage>, Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<Option<SlackMessage>, AppError> {
     match target {
         NotificationTarget::SlackWebhook { url } => {
             http.post(url)
@@ -342,26 +343,22 @@ async fn send_notification(
                 .json::<SlackResponse>()
                 .await?;
             if !response.ok {
-                return Err(format!(
-                    "Slack chat.postMessage failed: {}",
-                    response.error.as_deref().unwrap_or("unknown_error")
-                )
-                .into());
+                return Err(AppError::SlackApi {
+                    code: response.error.unwrap_or_else(|| "unknown_error".to_owned()),
+                });
             }
             Ok(Some(SlackMessage {
                 channel: response.channel.unwrap_or_else(|| channel.clone()),
-                ts: response
-                    .ts
-                    .ok_or("Slack chat.postMessage response did not contain ts")?,
+                ts: response.ts.ok_or(AppError::MissingSlackTimestamp)?,
             }))
         }
     }
 }
 
-fn validate_auth(config: &Config) -> Result<(), &'static str> {
+fn validate_auth(config: &Config) -> Result<(), ConfigurationError> {
     configured_auth(config).map(|_| ())
 }
-fn configured_auth(config: &Config) -> Result<AgentAuth, &'static str> {
+fn configured_auth(config: &Config) -> Result<AgentAuth, ConfigurationError> {
     match (&config.api_key_secret, &config.auth_json_secret) {
         (Some(value), None) => Ok(AgentAuth {
             api_key_secret_ref: Some(secret_ref(value)?),
@@ -371,13 +368,13 @@ fn configured_auth(config: &Config) -> Result<AgentAuth, &'static str> {
             api_key_secret_ref: None,
             auth_json_secret_ref: Some(secret_ref(value)?),
         }),
-        _ => Err("exactly one investigation credential env var must contain NAME:KEY"),
+        _ => Err(ConfigurationError::InvalidAuthSelection),
     }
 }
-fn secret_ref(value: &str) -> Result<SecretKeyRef, &'static str> {
+fn secret_ref(value: &str) -> Result<SecretKeyRef, ConfigurationError> {
     let (name, key) = value
         .split_once(':')
-        .ok_or("credential must use NAME:KEY")?;
+        .ok_or(ConfigurationError::InvalidSecretReference)?;
     Ok(SecretKeyRef {
         name: name.into(),
         key: key.into(),

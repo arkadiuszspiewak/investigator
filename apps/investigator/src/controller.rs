@@ -17,8 +17,8 @@ use kube::{
     },
 };
 use serde_json::json;
-use thiserror::Error;
 
+use crate::error::ReconcileError;
 use investigator::crd::{AgentAuth, Investigation, InvestigationAnswer, InvestigationStatus};
 
 #[derive(Clone)]
@@ -51,20 +51,6 @@ impl AgentJobConfig {
             )?,
         })
     }
-}
-
-#[derive(Debug, Error)]
-enum ReconcileError {
-    #[error("Kubernetes API request failed: {0}")]
-    Kubernetes(#[from] kube::Error),
-    #[error("Investigation is missing its namespace")]
-    MissingNamespace,
-    #[error("Investigation is missing its owner reference data")]
-    MissingOwnerReference,
-    #[error("could not serialize or deserialize pod configuration: {0}")]
-    Serialization(#[from] serde_json::Error),
-    #[error("exactly one of auth.apiKeySecretRef or auth.authJsonSecretRef must be set")]
-    InvalidAuth,
 }
 
 pub async fn run(client: Client, agent_job: AgentJobConfig) {
@@ -333,18 +319,14 @@ fn agent_job(
     })
 }
 
-fn agent_auth(
-    auth: &AgentAuth,
-    agent_image: &str,
-) -> Result<
-    (
-        EnvVar,
-        Option<Vec<Container>>,
-        Vec<Volume>,
-        Vec<VolumeMount>,
-    ),
-    ReconcileError,
-> {
+type AgentAuthResources = (
+    EnvVar,
+    Option<Vec<Container>>,
+    Vec<Volume>,
+    Vec<VolumeMount>,
+);
+
+fn agent_auth(auth: &AgentAuth, agent_image: &str) -> Result<AgentAuthResources, ReconcileError> {
     let codex_home = Volume {
         name: "codex-home".to_owned(),
         empty_dir: Some(EmptyDirVolumeSource::default()),

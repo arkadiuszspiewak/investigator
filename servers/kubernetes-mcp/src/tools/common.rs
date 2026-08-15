@@ -96,12 +96,11 @@ pub async fn resolve_resource(
         }
     }
 
-    Err(AppError::ResourceNotFound(format!(
-        "{resource}{} with {operation} access",
-        api_version
-            .map(|version| format!(" ({version})"))
-            .unwrap_or_default()
-    )))
+    Err(AppError::ResourceNotFound {
+        resource: resource.to_owned(),
+        api_version: api_version.map(str::to_owned),
+        operation: operation.to_owned(),
+    })
 }
 
 pub fn dynamic_api(

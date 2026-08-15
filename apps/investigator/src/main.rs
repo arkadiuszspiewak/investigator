@@ -1,11 +1,13 @@
 mod controller;
+mod error;
 
 use investigator::crd;
 
+use error::AppError;
 use kube::{Client, CustomResourceExt};
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), AppError> {
     if std::env::args().nth(1).as_deref() == Some("crd") {
         print!(
             "{}",

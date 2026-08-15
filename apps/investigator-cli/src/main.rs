@@ -1,3 +1,5 @@
+mod error;
+
 use std::{
     io::Write,
     path::{Path, PathBuf},
@@ -5,6 +7,7 @@ use std::{
 };
 
 use clap::{ArgGroup, Parser};
+use error::AppError;
 use investigator::crd::{
     AgentAuth, Investigation, InvestigationQuestion, InvestigationSpec, McpServer,
 };
@@ -50,7 +53,7 @@ struct Config {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), AppError> {
     let args = Args::parse();
     let config_path = args.config.unwrap_or(default_config_path()?);
     let config = load_config(&config_path)?;
@@ -78,29 +81,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let name = args.name.unwrap_or_else(generated_name);
         create_investigation(&api, &name, query, &config).await?;
         let investigation = wait_for_answer(&api, &name, 0).await?;
-        print_answer(&investigation, 0);
+        print_answer(&investigation, 0)?;
     }
     Ok(())
 }
 
-fn load_config(path: &Path) -> Result<Config, Box<dyn std::error::Error>> {
-    let content = std::fs::read_to_string(path).map_err(|error| {
-        format!(
-            "could not read configuration {}: {error}. Create it or pass --config PATH",
-            path.display()
-        )
+fn load_config(path: &Path) -> Result<Config, AppError> {
+    let content = std::fs::read_to_string(path).map_err(|source| AppError::ReadConfig {
+        path: path.to_owned(),
+        source,
     })?;
     let config: Config = serde_json::from_str(&content)?;
     if config.auth.api_key_secret_ref.is_some() == config.auth.auth_json_secret_ref.is_some() {
-        return Err(
-            "config auth must contain exactly one of apiKeySecretRef or authJsonSecretRef".into(),
-        );
+        return Err(AppError::InvalidAuth);
     }
     Ok(config)
 }
 
-fn default_config_path() -> Result<PathBuf, &'static str> {
-    let home = std::env::var_os("HOME").ok_or("HOME is not set; pass --config PATH")?;
+fn default_config_path() -> Result<PathBuf, AppError> {
+    let home = std::env::var_os("HOME").ok_or(AppError::MissingHome)?;
     Ok(PathBuf::from(home)
         .join(".investigator-cli")
         .join("config.json"))
@@ -131,7 +130,7 @@ async fn conversation(
     api: &Api<Investigation>,
     name: &str,
     existing: Option<Investigation>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), AppError> {
     let mut shown_answers = existing.as_ref().map(available_answers).unwrap_or(0);
     let mut waiting = existing.as_ref().map(has_pending_turn).unwrap_or(true);
     let mut current = existing;
@@ -151,12 +150,15 @@ async fn conversation(
     loop {
         if waiting {
             let investigation = wait_for_answer(api, name, shown_answers).await?;
-            print_answer(&investigation, shown_answers);
+            print_answer(&investigation, shown_answers)?;
             shown_answers = available_answers(&investigation);
             current = Some(investigation);
         }
-        let investigation = current.take().expect("conversation state");
-        let status = investigation.status.as_ref().expect("completed status");
+        let investigation = current.take().ok_or(AppError::MissingConversationState)?;
+        let status = investigation
+            .status
+            .as_ref()
+            .ok_or(AppError::MissingCompletedStatus)?;
         if status.phase.as_deref() == Some("Failed") {
             break;
         }
@@ -226,14 +228,18 @@ fn prompt(label: &str) -> Result<Option<String>, std::io::Error> {
     Ok((!value.is_empty()).then(|| value.to_owned()))
 }
 
-fn print_answer(investigation: &Investigation, shown: usize) {
-    let status = investigation.status.as_ref().expect("completed status");
+fn print_answer(investigation: &Investigation, shown: usize) -> Result<(), AppError> {
+    let status = investigation
+        .status
+        .as_ref()
+        .ok_or(AppError::MissingCompletedStatus)?;
     let answer = if shown == 0 {
         status.result.as_deref().unwrap_or("Investigation failed")
     } else {
         &status.answers[shown - 1].result
     };
     println!("\n{answer}");
+    Ok(())
 }
 
 async fn wait_for_answer(

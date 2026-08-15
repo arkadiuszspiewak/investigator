@@ -9,8 +9,15 @@ pub enum AppError {
     #[error("failed to serialize Kubernetes response: {0}")]
     Serialization(#[from] serde_json::Error),
 
-    #[error("Kubernetes resource not found: {0}")]
-    ResourceNotFound(String),
+    #[error(
+        "Kubernetes resource not found: {resource}{api_version} with {operation} access",
+        api_version = api_version.as_deref().map(|value| format!(" ({value})")).unwrap_or_default()
+    )]
+    ResourceNotFound {
+        resource: String,
+        api_version: Option<String>,
+        operation: String,
+    },
 
     #[error(transparent)]
     Transport(#[from] mcp_runtime::TransportError),
@@ -31,7 +38,9 @@ impl From<ServerInitializeError> for AppError {
 impl From<AppError> for ErrorData {
     fn from(error: AppError) -> Self {
         match error {
-            AppError::ResourceNotFound(message) => ErrorData::resource_not_found(message, None),
+            error @ AppError::ResourceNotFound { .. } => {
+                ErrorData::resource_not_found(error.to_string(), None)
+            }
             error => ErrorData::internal_error(error.to_string(), None),
         }
     }

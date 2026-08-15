@@ -14,8 +14,18 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum TransportError {
-    #[error("invalid MCP server configuration: {0}")]
-    InvalidConfiguration(String),
+    #[error("MCP_PATH must begin with '/'")]
+    InvalidPath,
+    #[error("MCP_ALLOWED_HOSTS must contain at least one host")]
+    EmptyAllowedHosts,
+    #[error("{name} must be true or false, got {value:?}")]
+    InvalidBoolean { name: String, value: String },
+    #[error("could not read {name}: {source}")]
+    Environment {
+        name: String,
+        #[source]
+        source: env::VarError,
+    },
     #[error("invalid listen address: {0}")]
     Address(#[from] std::net::AddrParseError),
     #[error("I/O error: {0}")]
@@ -31,9 +41,7 @@ where
         .parse()?;
     let path = env::var("MCP_PATH").unwrap_or_else(|_| "/mcp".to_owned());
     if !path.starts_with('/') {
-        return Err(TransportError::InvalidConfiguration(
-            "MCP_PATH must begin with '/'".to_owned(),
-        ));
+        return Err(TransportError::InvalidPath);
     }
 
     let stateless = env_flag("MCP_STATELESS", false)?;
@@ -48,9 +56,7 @@ where
             .map(str::to_owned)
             .collect();
         if hosts.is_empty() {
-            return Err(TransportError::InvalidConfiguration(
-                "MCP_ALLOWED_HOSTS must contain at least one host".to_owned(),
-            ));
+            return Err(TransportError::EmptyAllowedHosts);
         }
         config = config.with_allowed_hosts(hosts);
     }
@@ -68,13 +74,15 @@ fn env_flag(name: &str, default: bool) -> Result<bool, TransportError> {
     match env::var(name) {
         Ok(value) if matches!(value.as_str(), "1" | "true" | "TRUE") => Ok(true),
         Ok(value) if matches!(value.as_str(), "0" | "false" | "FALSE") => Ok(false),
-        Ok(value) => Err(TransportError::InvalidConfiguration(format!(
-            "{name} must be true or false, got {value:?}"
-        ))),
+        Ok(value) => Err(TransportError::InvalidBoolean {
+            name: name.to_owned(),
+            value,
+        }),
         Err(env::VarError::NotPresent) => Ok(default),
-        Err(error) => Err(TransportError::InvalidConfiguration(format!(
-            "could not read {name}: {error}"
-        ))),
+        Err(source) => Err(TransportError::Environment {
+            name: name.to_owned(),
+            source,
+        }),
     }
 }
 

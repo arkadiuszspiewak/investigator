@@ -3,8 +3,14 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum AppError {
-    #[error("invalid Alertmanager configuration: {0}")]
-    Configuration(String),
+    #[error("ALERTMANAGER_URL is required")]
+    MissingUrl,
+    #[error("ALERTMANAGER_URL is not a valid URL: {0}")]
+    InvalidUrl(#[source] url::ParseError),
+    #[error("ALERTMANAGER_TIMEOUT_SECONDS must be an integer: {0}")]
+    InvalidTimeout(#[source] std::num::ParseIntError),
+    #[error("ALERTMANAGER_TIMEOUT_SECONDS must be greater than zero")]
+    ZeroTimeout,
 
     #[error("Alertmanager request failed: {0}")]
     Request(#[from] reqwest::Error),
