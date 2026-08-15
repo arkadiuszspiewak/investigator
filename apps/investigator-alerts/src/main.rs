@@ -32,12 +32,6 @@ struct Config {
     query: String,
     #[arg(
         long,
-        env = "INVESTIGATION_AGENT_IMAGE",
-        default_value = "ghcr.io/arkadiuszspiewak/investigator-agent:latest"
-    )]
-    agent_image: String,
-    #[arg(
-        long,
         env = "INVESTIGATION_SERVICE_ACCOUNT",
         default_value = "investigator-agent"
     )]
@@ -218,7 +212,6 @@ async fn investigate(state: Arc<AppState>, alert: Alert) -> Result<(), AppError>
         InvestigationSpec {
             query: state.config.query.replace("{{alert}}", &serialized),
             questions: vec![],
-            agent_image: state.config.agent_image.clone(),
             auth: configured_auth(&state.config)?,
             mcp_servers: serde_json::from_str::<Vec<McpServer>>(&state.config.mcp_servers)?,
             service_account_name: state.config.service_account.clone(),
@@ -464,7 +457,6 @@ mod tests {
             bind_address: "127.0.0.1:8080".into(),
             namespace: "default".into(),
             query: "investigate {{alert}}".into(),
-            agent_image: "agent:test".into(),
             service_account: "agent".into(),
             api_key_secret: Some("openai:api-key".into()),
             auth_json_secret: None,

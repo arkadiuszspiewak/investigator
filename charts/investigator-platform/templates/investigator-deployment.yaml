@@ -40,6 +40,8 @@ spec:
           securityContext:
             {{- toYaml .Values.investigator.securityContext | nindent 12 }}
           env:
+            - name: INVESTIGATOR_AGENT_IMAGE
+              value: {{ include "investigator-platform.image" (dict "root" . "image" .Values.investigator.agentImage) | quote }}
             - name: INVESTIGATOR_AGENT_JOB_NODE_SELECTOR
               value: {{ .Values.investigator.agentJob.nodeSelector | toJson | quote }}
             - name: INVESTIGATOR_AGENT_JOB_AFFINITY

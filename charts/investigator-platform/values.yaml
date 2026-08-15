@@ -11,6 +11,11 @@ investigator:
     # Always is required for mutable tags such as main. Override to
     # IfNotPresent when using an immutable version tag or digest.
     pullPolicy: Always
+  # Image used by every Codex agent Job created by the controller.
+  agentImage:
+    repository: ghcr.io/arkadiuszspiewak/investigator-agent
+    tag: latest
+    digest: ""
   imagePullSecrets: []
   serviceAccount: {create: true, name: "", annotations: {}}
   # For other Investigation namespaces, provision the same account there.

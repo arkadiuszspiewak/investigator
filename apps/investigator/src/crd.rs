@@ -21,10 +21,6 @@ pub struct InvestigationSpec {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub questions: Vec<InvestigationQuestion>,
 
-    /// Container image containing Codex. The controller never runs the LLM itself.
-    #[serde(default = "default_agent_image")]
-    pub agent_image: String,
-
     /// Credentials used by Codex. Exactly one credential source must be set.
     pub auth: AgentAuth,
 
@@ -88,10 +84,6 @@ pub struct InvestigationStatus {
 pub struct InvestigationAnswer {
     pub question_id: String,
     pub result: String,
-}
-
-fn default_agent_image() -> String {
-    "ghcr.io/arkadiuszspiewak/investigator-agent:latest".to_owned()
 }
 
 fn default_service_account() -> String {

@@ -43,8 +43,6 @@ struct Args {
 struct Config {
     #[serde(default = "default_namespace")]
     namespace: String,
-    #[serde(default = "default_agent_image")]
-    agent_image: String,
     #[serde(default = "default_service_account")]
     service_account_name: String,
     auth: AgentAuth,
@@ -141,7 +139,6 @@ async fn create_investigation(
         InvestigationSpec {
             query,
             questions: vec![],
-            agent_image: config.agent_image.clone(),
             auth: config.auth.clone(),
             mcp_servers: config.mcp_servers.clone(),
             service_account_name: config.service_account_name.clone(),
@@ -296,9 +293,6 @@ fn timestamp_millis() -> u128 {
 fn default_namespace() -> String {
     "default".to_owned()
 }
-fn default_agent_image() -> String {
-    "ghcr.io/arkadiuszspiewak/investigator-agent:latest".to_owned()
-}
 fn default_service_account() -> String {
     "investigator-agent".to_owned()
 }
@@ -329,7 +323,6 @@ mod tests {
                     id: "q1".into(),
                     query: "follow-up".into(),
                 }],
-                agent_image: default_agent_image(),
                 auth: AgentAuth {
                     api_key_secret_ref: None,
                     auth_json_secret_ref: None,

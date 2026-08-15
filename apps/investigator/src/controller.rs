@@ -27,8 +27,9 @@ struct Context {
     agent_job: AgentJobConfig,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct AgentJobConfig {
+    image: String,
     node_selector: BTreeMap<String, String>,
     affinity: Option<Affinity>,
     tolerations: Vec<Toleration>,
@@ -37,6 +38,9 @@ pub struct AgentJobConfig {
 impl AgentJobConfig {
     pub fn from_env() -> Result<Self, serde_json::Error> {
         Ok(Self {
+            image: std::env::var("INVESTIGATOR_AGENT_IMAGE").unwrap_or_else(|_| {
+                "ghcr.io/arkadiuszspiewak/investigator-agent:latest".to_owned()
+            }),
             node_selector: serde_json::from_str(
                 &std::env::var("INVESTIGATOR_AGENT_JOB_NODE_SELECTOR")
                     .unwrap_or_else(|_| "{}".to_owned()),
@@ -50,6 +54,17 @@ impl AgentJobConfig {
                     .unwrap_or_else(|_| "[]".to_owned()),
             )?,
         })
+    }
+}
+
+impl Default for AgentJobConfig {
+    fn default() -> Self {
+        Self {
+            image: "ghcr.io/arkadiuszspiewak/investigator-agent:latest".to_owned(),
+            node_selector: BTreeMap::new(),
+            affinity: None,
+            tolerations: vec![],
+        }
     }
 }
 
@@ -264,7 +279,7 @@ fn agent_job(
         .ok_or(ReconcileError::MissingOwnerReference)?;
     let mcp_servers = serde_json::to_string(&investigation.spec.mcp_servers)?;
     let (auth_env, init_containers, volumes, volume_mounts) =
-        agent_auth(&investigation.spec.auth, &investigation.spec.agent_image)?;
+        agent_auth(&investigation.spec.auth, &config.image)?;
     Ok(Job {
         metadata: ObjectMeta {
             name: Some(name),
@@ -294,7 +309,7 @@ fn agent_job(
                         .then(|| config.tolerations.clone()),
                     containers: vec![Container {
                         name: "codex".to_owned(),
-                        image: Some(investigation.spec.agent_image.clone()),
+                        image: Some(config.image.clone()),
                         args: Some(vec![
                             "exec".to_owned(),
                             "--approve-for-me".to_owned(),
@@ -492,7 +507,6 @@ mod tests {
             InvestigationSpec {
                 query: "investigate".to_owned(),
                 questions: vec![],
-                agent_image: "agent:test".to_owned(),
                 auth: AgentAuth {
                     api_key_secret_ref: Some(secret("openai", "api-key")),
                     auth_json_secret_ref: None,
@@ -503,6 +517,7 @@ mod tests {
         );
         investigation.metadata.uid = Some("test-uid".to_owned());
         let config = AgentJobConfig {
+            image: "agent:test".to_owned(),
             node_selector: BTreeMap::from([("workload".to_owned(), "agent".to_owned())]),
             affinity: Some(serde_json::from_value(json!({"nodeAffinity": {}})).unwrap()),
             tolerations: vec![
@@ -523,6 +538,7 @@ mod tests {
         .spec
         .unwrap();
         assert_eq!(pod.node_selector.unwrap()["workload"], "agent");
+        assert_eq!(pod.containers[0].image.as_deref(), Some("agent:test"));
         assert!(pod.affinity.unwrap().node_affinity.is_some());
         assert_eq!(pod.tolerations.unwrap()[0].key.as_deref(), Some("agent"));
         assert_eq!(
@@ -549,7 +565,6 @@ mod tests {
             InvestigationSpec {
                 query: "investigate".to_owned(),
                 questions: vec![],
-                agent_image: "agent:test".to_owned(),
                 auth: AgentAuth {
                     api_key_secret_ref: Some(secret("openai", "api-key")),
                     auth_json_secret_ref: None,
@@ -579,7 +594,6 @@ mod tests {
             InvestigationSpec {
                 query: "investigate".to_owned(),
                 questions: vec![],
-                agent_image: "agent:test".to_owned(),
                 auth: AgentAuth {
                     api_key_secret_ref: Some(secret("openai", "api-key")),
                     auth_json_secret_ref: None,

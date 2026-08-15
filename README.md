@@ -240,8 +240,12 @@ See [Alertmanager MCP server](docs/alertmanager-mcp.md) for alert investigation 
 helm upgrade --install investigator charts/investigator-platform \
   --namespace investigations --create-namespace \
   --set investigator.image.repository=ghcr.io/my-org/investigator \
+  --set investigator.agentImage.tag=0.1.0 \
   --set mcpServers.kubernetes.image.repository=ghcr.io/my-org/kubernetes-mcp
 ```
+
+`investigator.agentImage` configures the Codex agent image used by every
+Investigation Job. Individual Investigation resources cannot override it.
 
 Each provider has dedicated configuration under `mcpServers.<provider>`. Copy
 an entry and set `enabled: true` to add one without changing templates. Server
