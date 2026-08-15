@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      publish_existing_releases:
+        description: Dispatch artifact workflows for every version in the release manifest
+        type: boolean
+        default: false
 
 concurrency:
   group: release-please-main
@@ -25,14 +30,27 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
+      - uses: actions/checkout@v5
+        if: >-
+          steps.release.outputs.releases_created == 'true' ||
+          inputs.publish_existing_releases == true
+
       - name: Start artifact workflows
-        if: steps.release.outputs.releases_created == 'true'
+        if: >-
+          steps.release.outputs.releases_created == 'true' ||
+          inputs.publish_existing_releases == true
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_OUTPUTS: ${{ toJSON(steps.release.outputs) }}
           RELEASED_PATHS: ${{ steps.release.outputs.paths_released }}
+          PUBLISH_EXISTING_RELEASES: ${{ inputs.publish_existing_releases }}
         run: |
           set -euo pipefail
+
+          released_paths="$RELEASED_PATHS"
+          if [[ "$PUBLISH_EXISTING_RELEASES" == "true" ]]; then
+            released_paths=$(jq -c 'keys' .release-please-manifest.json)
+          fi
 
           while IFS= read -r path; do
             case "$path" in
@@ -68,10 +86,15 @@ jobs:
 
             tag=$(jq -r --arg key "${path}--tag_name" '.[$key]' <<<"$RELEASE_OUTPUTS")
             if [[ -z "$tag" || "$tag" == "null" ]]; then
-              echo "Release Please did not return a tag for $path" >&2
-              exit 1
+              component=$(jq -r --arg path "$path" '.packages[$path].component' release-please-config.json)
+              version=$(jq -r --arg path "$path" '.[$path]' .release-please-manifest.json)
+              if [[ -z "$component" || "$component" == "null" || -z "$version" || "$version" == "null" ]]; then
+                echo "Could not determine the existing release tag for $path" >&2
+                exit 1
+              fi
+              tag="${component}-v${version}"
             fi
 
-            gh workflow run "$workflow" --ref "$tag"
+            gh workflow run "$workflow" --repo "$GITHUB_REPOSITORY" --ref "$tag"
             echo "Dispatched $workflow for $tag"
-          done < <(jq -r '.[]' <<<"$RELEASED_PATHS")
+          done < <(jq -r '.[]' <<<"$released_paths")
