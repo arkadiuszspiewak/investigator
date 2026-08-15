@@ -360,6 +360,11 @@ async fn send_notification(
                 .send()
                 .await?
                 .error_for_status()?;
+            tracing::info!(
+                event = "slack_message_sent",
+                delivery_method = "webhook",
+                threaded = false,
+            );
             Ok(None)
         }
         NotificationTarget::SlackApp {
@@ -385,10 +390,18 @@ async fn send_notification(
                     code: response.error.unwrap_or_else(|| "unknown_error".to_owned()),
                 });
             }
-            Ok(Some(SlackMessage {
+            let message = SlackMessage {
                 channel: response.channel.unwrap_or_else(|| channel.clone()),
                 ts: response.ts.ok_or(AppError::MissingSlackTimestamp)?,
-            }))
+            };
+            tracing::info!(
+                event = "slack_message_sent",
+                delivery_method = "slack_app",
+                channel = message.channel,
+                message_ts = message.ts,
+                threaded = thread_ts.is_some(),
+            );
+            Ok(Some(message))
         }
     }
 }
