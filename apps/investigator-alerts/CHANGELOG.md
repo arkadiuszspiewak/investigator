@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/arkadiuszspiewak/investigator/compare/investigator-alerts-v0.2.0...investigator-alerts-v0.3.0) (2026-08-16)
+
+
+### Features
+
+* add agent.md, clean up mcp server envs ([84cf1ec](https://github.com/arkadiuszspiewak/investigator/commit/84cf1ec2b2fd645fa1d583c5cc77c31a66bf9600))
+
 ## [0.2.0](https://github.com/arkadiuszspiewak/investigator/compare/investigator-alerts-v0.1.4...investigator-alerts-v0.2.0) (2026-08-15)
 
 
