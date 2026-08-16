@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/arkadiuszspiewak/investigator/compare/investigator-cli-v0.1.6...investigator-cli-v0.2.0) (2026-08-16)
+
+
+### Features
+
+* add agent.md, clean up mcp server envs ([84cf1ec](https://github.com/arkadiuszspiewak/investigator/commit/84cf1ec2b2fd645fa1d583c5cc77c31a66bf9600))
+
 ## [0.1.6](https://github.com/arkadiuszspiewak/investigator/compare/investigator-cli-v0.1.5...investigator-cli-v0.1.6) (2026-08-15)
 
 
