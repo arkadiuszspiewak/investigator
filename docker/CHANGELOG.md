@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/arkadiuszspiewak/investigator/compare/agent-v0.2.0...agent-v0.2.1) (2026-08-16)
+
+
+### Bug Fixes
+
+* update agent.md ([e90949e](https://github.com/arkadiuszspiewak/investigator/commit/e90949e6fe140b4c7f81555066abde58e6c869a8))
+
 ## [0.2.0](https://github.com/arkadiuszspiewak/investigator/compare/agent-v0.1.0...agent-v0.2.0) (2026-08-16)
 
 

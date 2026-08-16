@@ -5,6 +5,6 @@
   "servers/kubernetes-mcp": "0.1.1",
   "servers/prometheus-mcp": "0.1.1",
   "servers/alertmanager-mcp": "0.1.1",
-  "charts/investigator-platform": "0.2.0",
-  "docker": "0.2.0"
+  "charts/investigator-platform": "0.2.1",
+  "docker": "0.2.1"
 }
