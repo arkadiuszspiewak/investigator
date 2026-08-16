@@ -66,7 +66,7 @@ apps:
     service: {enabled: true, type: ClusterIP, port: 8080}
     env:
       - name: INVESTIGATION_QUERY
-        value: "Investigate this active alert. Explain what happened, why it happened, and how to fix it. Alert: {{alert}}"
+        value: "Investigate this active Kubernetes alert and determine its likely cause: {{alert}}"
       - name: INVESTIGATION_SERVICE_ACCOUNT
         value: investigator-agent
       # Add exactly one credential reference, for example:
