@@ -24,10 +24,6 @@ pub struct InvestigationSpec {
     /// Credentials used by Codex. Exactly one credential source must be set.
     pub auth: AgentAuth,
 
-    /// MCP Streamable HTTP endpoints exposed to this investigation.
-    #[serde(default)]
-    pub mcp_servers: Vec<McpServer>,
-
     /// ServiceAccount used by the agent Job. Its RBAC defines the blast radius.
     #[serde(default = "default_service_account")]
     pub service_account_name: String,
@@ -58,13 +54,6 @@ pub struct AgentAuth {
 pub struct SecretKeyRef {
     pub name: String,
     pub key: String,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct McpServer {
-    pub name: String,
-    pub url: String,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema, PartialEq, Serialize)]

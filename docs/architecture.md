@@ -15,6 +15,9 @@ Alertmanager ─> investigator-alerts ─┘                                  �
   It converts desired state into Jobs and reports Job state on the CR.
 - The agent image contains Codex plus an entrypoint that consumes
   `INVESTIGATOR_MCP_SERVERS`, configures Codex, and executes the query.
+- Helm derives the controller-owned MCP registry from enabled server entries.
+  Every Investigation uses that registry; CRs and clients cannot override MCP
+  endpoints.
 - Each MCP server owns one integration and is independently versioned, secured,
   scaled, and deployed.
 - `prometheus-mcp` stays read-only and exposes only PromQL, metric/label
@@ -42,8 +45,9 @@ Jobs (`-agent`, then `-agent-qN`) preserve auditability and retry isolation.
 
 Create `servers/<provider>-mcp` with its own manifest, binary, handler, and
 tools. Use `mcp_runtime::serve_http` for shared HTTP behavior. Add the crate to
-the workspace and deploy it independently. An Investigation opts into it by
-name and URL; no controller change is required.
+the workspace and deploy it independently. Enabling its Helm entry adds it to
+the central controller registry used by all Investigations. No controller code
+change is required.
 
 ## Lifecycle and security
 

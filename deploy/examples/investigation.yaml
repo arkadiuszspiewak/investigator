@@ -14,10 +14,3 @@ spec:
       name: openai-api-key
       key: api-key
   serviceAccountName: investigator-agent
-  mcpServers:
-    - name: kubernetes
-      url: http://investigator-investigator-platform-kubernetes.investigations.svc.cluster.local:8080/mcp
-    - name: prometheus
-      url: http://investigator-investigator-platform-prometheus.investigations.svc.cluster.local:8080/mcp
-    - name: argo
-      url: http://investigator-investigator-platform-argo.investigations.svc.cluster.local:8080/mcp

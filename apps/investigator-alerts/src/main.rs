@@ -10,7 +10,7 @@ use axum::{
 };
 use clap::Parser;
 use error::{AppError, ConfigurationError};
-use investigator::crd::{AgentAuth, Investigation, InvestigationSpec, McpServer, SecretKeyRef};
+use investigator::crd::{AgentAuth, Investigation, InvestigationSpec, SecretKeyRef};
 use kube::{
     Api, Client,
     api::{Patch, PatchParams, PostParams},
@@ -40,8 +40,6 @@ struct Config {
     api_key_secret: Option<String>,
     #[arg(long, env = "INVESTIGATION_AUTH_JSON_SECRET")]
     auth_json_secret: Option<String>,
-    #[arg(long, env = "INVESTIGATION_MCP_SERVERS", default_value = "[]")]
-    mcp_servers: String,
     #[arg(long, env = "SLACK_WEBHOOK_URL")]
     slack_webhook_url: Option<String>,
     /// Slack App bot token (xoxb-...). Must be used with SLACK_CHANNEL.
@@ -213,7 +211,6 @@ async fn investigate(state: Arc<AppState>, alert: Alert) -> Result<(), AppError>
             query: state.config.query.replace("{{alert}}", &serialized),
             questions: vec![],
             auth: configured_auth(&state.config)?,
-            mcp_servers: serde_json::from_str::<Vec<McpServer>>(&state.config.mcp_servers)?,
             service_account_name: state.config.service_account.clone(),
         },
     );
@@ -473,7 +470,6 @@ mod tests {
             service_account: "agent".into(),
             api_key_secret: Some("openai:api-key".into()),
             auth_json_secret: None,
-            mcp_servers: "[]".into(),
             slack_webhook_url: None,
             slack_bot_token: None,
             slack_channel: None,

@@ -182,8 +182,10 @@ CRD or controller.
    controller, and enabled MCP server Deployments and Services.
 2. Create an Investigation like `deploy/examples/investigation.yaml`.
 3. The controller creates an owned Job running `codex exec --full-auto <query>`.
-4. The agent receives MCP endpoints as `INVESTIGATOR_MCP_SERVERS`; its image
-   must translate that JSON into Codex configuration.
+4. Helm builds the controller-owned MCP registry from only the enabled
+   `mcpServers` entries. Investigation resources and clients cannot override it.
+5. The agent receives those endpoints as `INVESTIGATOR_MCP_SERVERS`;
+   its image translates that JSON into Codex configuration.
 
 Create a Secret for one of the two supported Codex credential modes, then
 reference it from `spec.auth`:
@@ -251,6 +253,12 @@ Each provider has dedicated configuration under `mcpServers.<provider>`. Copy
 an entry and set `enabled: true` to add one without changing templates. Server
 images use thin path-filtered workflows that call the shared
 `_build-server.yml`.
+
+Enabled providers automatically become available to every Investigation.
+Server URLs are generated centrally from the Helm release namespace, Service
+name, port, and MCP path. Investigation resources, the CLI, and the alerts app
+do not accept MCP endpoints, preventing clients from injecting or omitting
+servers.
 
 Release Please manages independent versions and GitHub Releases for every app,
 server, the agent, and the chart. Commits on `main` must use Conventional Commit

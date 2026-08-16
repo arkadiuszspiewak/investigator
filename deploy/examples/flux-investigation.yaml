@@ -14,8 +14,3 @@ spec:
       name: codex-auth
       key: auth.json
   serviceAccountName: investigator-agent
-  mcpServers:
-    - name: kubernetes
-      url: http://investigator-investigator-platform-kubernetes.investigator.svc.cluster.local:8080/mcp
-    - name: prometheus
-      url: http://investigator-investigator-platform-prometheus.investigator.svc.cluster.local:8080/mcp

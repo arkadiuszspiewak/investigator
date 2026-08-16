@@ -8,9 +8,7 @@ use std::{
 
 use clap::{ArgGroup, Parser};
 use error::AppError;
-use investigator::crd::{
-    AgentAuth, Investigation, InvestigationQuestion, InvestigationSpec, McpServer,
-};
+use investigator::crd::{AgentAuth, Investigation, InvestigationQuestion, InvestigationSpec};
 use kube::{
     Api, Client,
     api::{Patch, PatchParams, PostParams},
@@ -46,8 +44,6 @@ struct Config {
     #[serde(default = "default_service_account")]
     service_account_name: String,
     auth: AgentAuth,
-    #[serde(default)]
-    mcp_servers: Vec<McpServer>,
 }
 
 #[tokio::main]
@@ -140,7 +136,6 @@ async fn create_investigation(
             query,
             questions: vec![],
             auth: config.auth.clone(),
-            mcp_servers: config.mcp_servers.clone(),
             service_account_name: config.service_account_name.clone(),
         },
     );
@@ -310,7 +305,6 @@ mod tests {
         .unwrap();
         assert_eq!(config.namespace, "default");
         assert_eq!(config.service_account_name, "investigator-agent");
-        assert!(config.mcp_servers.is_empty());
     }
 
     #[test]
@@ -327,7 +321,6 @@ mod tests {
                     api_key_secret_ref: None,
                     auth_json_secret_ref: None,
                 },
-                mcp_servers: vec![],
                 service_account_name: default_service_account(),
             },
         );

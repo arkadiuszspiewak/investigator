@@ -7,11 +7,5 @@
       "name": "openai-api-key",
       "key": "api-key"
     }
-  },
-  "mcpServers": [
-    {
-      "name": "kubernetes",
-      "url": "http://investigator-investigator-platform-kubernetes.investigations.svc.cluster.local:8080/mcp"
-    }
-  ]
+  }
 }

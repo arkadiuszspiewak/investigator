@@ -58,15 +58,6 @@ spec:
                 serviceAccountName:
                   type: string
                   default: investigator-agent
-                mcpServers:
-                  type: array
-                  default: []
-                  items:
-                    type: object
-                    required: [name, url]
-                    properties:
-                      name: {type: string}
-                      url: {type: string}
             status:
               type: object
               properties:

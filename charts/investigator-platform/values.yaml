@@ -69,8 +69,6 @@ apps:
         value: "Investigate this active alert. Explain what happened, why it happened, and how to fix it. Alert: {{alert}}"
       - name: INVESTIGATION_SERVICE_ACCOUNT
         value: investigator-agent
-      - name: INVESTIGATION_MCP_SERVERS
-        value: '[]'
       # Add exactly one credential reference, for example:
       # - {name: INVESTIGATION_API_KEY_SECRET, value: "openai-api-key:api-key"}
       # Configure Slack without putting its URL in values:
@@ -93,7 +91,8 @@ apps:
     tolerations: []
     affinity: {}
 
-# Copy an entry to add a provider. Every enabled item renders independently.
+# Copy an entry to add a provider. Every enabled item renders independently and
+# is included in the controller-owned MCP registry used by every investigation.
 mcpServers:
   kubernetes:
     enabled: true

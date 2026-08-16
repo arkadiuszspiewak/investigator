@@ -1,3 +1,13 @@
+{{- $root := . -}}
+{{- $mcpServers := list -}}
+{{- range $name, $server := .Values.mcpServers -}}
+{{- if $server.enabled -}}
+{{- $ctx := dict "root" $root "name" $name "server" $server -}}
+{{- $serverName := include "investigator-platform.serverName" $ctx -}}
+{{- $url := printf "http://%s.%s.svc.cluster.local:%v%s" $serverName $root.Release.Namespace $server.port $server.path -}}
+{{- $mcpServers = append $mcpServers (dict "name" $name "url" $url) -}}
+{{- end -}}
+{{- end -}}
 {{- if .Values.investigator.enabled }}
 apiVersion: apps/v1
 kind: Deployment
@@ -42,6 +52,8 @@ spec:
           env:
             - name: INVESTIGATOR_AGENT_IMAGE
               value: {{ include "investigator-platform.image" (dict "root" . "image" .Values.investigator.agentImage) | quote }}
+            - name: INVESTIGATOR_MCP_SERVERS
+              value: {{ $mcpServers | toJson | quote }}
             - name: INVESTIGATOR_AGENT_JOB_NODE_SELECTOR
               value: {{ .Values.investigator.agentJob.nodeSelector | toJson | quote }}
             - name: INVESTIGATOR_AGENT_JOB_AFFINITY

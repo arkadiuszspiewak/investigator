@@ -21,6 +21,13 @@ use serde_json::json;
 use crate::error::ReconcileError;
 use investigator::crd::{AgentAuth, Investigation, InvestigationAnswer, InvestigationStatus};
 
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct McpServer {
+    name: String,
+    url: String,
+}
+
 #[derive(Clone)]
 struct Context {
     client: Client,
@@ -30,6 +37,7 @@ struct Context {
 #[derive(Clone, Debug)]
 pub struct AgentJobConfig {
     image: String,
+    mcp_servers: Vec<McpServer>,
     node_selector: BTreeMap<String, String>,
     affinity: Option<Affinity>,
     tolerations: Vec<Toleration>,
@@ -41,6 +49,9 @@ impl AgentJobConfig {
             image: std::env::var("INVESTIGATOR_AGENT_IMAGE").unwrap_or_else(|_| {
                 "ghcr.io/arkadiuszspiewak/investigator-agent:latest".to_owned()
             }),
+            mcp_servers: serde_json::from_str(
+                &std::env::var("INVESTIGATOR_MCP_SERVERS").unwrap_or_else(|_| "[]".to_owned()),
+            )?,
             node_selector: serde_json::from_str(
                 &std::env::var("INVESTIGATOR_AGENT_JOB_NODE_SELECTOR")
                     .unwrap_or_else(|_| "{}".to_owned()),
@@ -61,6 +72,7 @@ impl Default for AgentJobConfig {
     fn default() -> Self {
         Self {
             image: "ghcr.io/arkadiuszspiewak/investigator-agent:latest".to_owned(),
+            mcp_servers: vec![],
             node_selector: BTreeMap::new(),
             affinity: None,
             tolerations: vec![],
@@ -277,7 +289,7 @@ fn agent_job(
     let owner_reference = investigation
         .controller_owner_ref(&())
         .ok_or(ReconcileError::MissingOwnerReference)?;
-    let mcp_servers = serde_json::to_string(&investigation.spec.mcp_servers)?;
+    let mcp_servers = serde_json::to_string(&config.mcp_servers)?;
     let (auth_env, init_containers, volumes, volume_mounts) =
         agent_auth(&investigation.spec.auth, &config.image)?;
     Ok(Job {
@@ -511,13 +523,16 @@ mod tests {
                     api_key_secret_ref: Some(secret("openai", "api-key")),
                     auth_json_secret_ref: None,
                 },
-                mcp_servers: vec![],
                 service_account_name: "agent".to_owned(),
             },
         );
         investigation.metadata.uid = Some("test-uid".to_owned());
         let config = AgentJobConfig {
             image: "agent:test".to_owned(),
+            mcp_servers: vec![McpServer {
+                name: "kubernetes".to_owned(),
+                url: "http://kubernetes-mcp:8080/mcp".to_owned(),
+            }],
             node_selector: BTreeMap::from([("workload".to_owned(), "agent".to_owned())]),
             affinity: Some(serde_json::from_value(json!({"nodeAffinity": {}})).unwrap()),
             tolerations: vec![
@@ -541,6 +556,17 @@ mod tests {
         assert_eq!(pod.containers[0].image.as_deref(), Some("agent:test"));
         assert!(pod.affinity.unwrap().node_affinity.is_some());
         assert_eq!(pod.tolerations.unwrap()[0].key.as_deref(), Some("agent"));
+        let mcp_servers = pod.containers[0]
+            .env
+            .as_ref()
+            .unwrap()
+            .iter()
+            .find(|env| env.name == "INVESTIGATOR_MCP_SERVERS")
+            .unwrap();
+        assert_eq!(
+            mcp_servers.value.as_deref(),
+            Some("[{\"name\":\"kubernetes\",\"url\":\"http://kubernetes-mcp:8080/mcp\"}]")
+        );
         assert_eq!(
             pod.containers[0].args.as_deref(),
             Some(
@@ -569,7 +595,6 @@ mod tests {
                     api_key_secret_ref: Some(secret("openai", "api-key")),
                     auth_json_secret_ref: None,
                 },
-                mcp_servers: vec![],
                 service_account_name: "agent".to_owned(),
             },
         );
@@ -598,7 +623,6 @@ mod tests {
                     api_key_secret_ref: Some(secret("openai", "api-key")),
                     auth_json_secret_ref: None,
                 },
-                mcp_servers: vec![],
                 service_account_name: "agent".to_owned(),
             },
         );

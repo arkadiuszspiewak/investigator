@@ -5,6 +5,7 @@ on:
     paths:
       - docker/Dockerfile.agent
       - docker/agent-entrypoint.sh
+      - docker/agent/AGENTS.md
       - .github/workflows/build-agent.yml
   push:
     branches: [main]
@@ -12,6 +13,7 @@ on:
     paths:
       - docker/Dockerfile.agent
       - docker/agent-entrypoint.sh
+      - docker/agent/AGENTS.md
       - .github/workflows/build-agent.yml
   workflow_dispatch:
 
