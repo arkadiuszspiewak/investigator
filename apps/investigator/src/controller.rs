@@ -24,7 +24,7 @@ use investigator::crd::{Investigation, InvestigationAnswer, InvestigationStatus}
 #[derive(Clone, Debug, PartialEq)]
 enum AgentProvider {
     OpenAi,
-    Bedrock { region: String },
+    Bedrock { region: String, project_id: String },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -74,6 +74,7 @@ impl AgentJobConfig {
             "openai" => AgentProvider::OpenAi,
             "bedrock" => AgentProvider::Bedrock {
                 region: required_env("INVESTIGATOR_AGENT_REGION")?,
+                project_id: required_project_id()?,
             },
             _ => return Err(format!("unsupported agent provider: {provider_name}")),
         };
@@ -153,6 +154,22 @@ impl Default for AgentJobConfig {
 
 fn required_env(name: &str) -> Result<String, String> {
     std::env::var(name).map_err(|_| format!("missing required environment variable {name}"))
+}
+
+fn required_project_id() -> Result<String, String> {
+    let project_id = required_env("INVESTIGATOR_AGENT_PROJECT_ID")?;
+    if project_id.len() <= 5
+        || !project_id.starts_with("proj_")
+        || !project_id[5..]
+            .chars()
+            .all(|character| character.is_ascii_lowercase() || character.is_ascii_digit())
+    {
+        return Err(
+            "INVESTIGATOR_AGENT_PROJECT_ID must be a Bedrock project ID beginning with proj_"
+                .to_owned(),
+        );
+    }
+    Ok(project_id)
 }
 
 pub async fn run(client: Client, agent_job: AgentJobConfig) {
@@ -378,7 +395,7 @@ fn agent_job(
             value: Some("openai".to_owned()),
             ..Default::default()
         }),
-        AgentProvider::Bedrock { region } => {
+        AgentProvider::Bedrock { region, .. } => {
             auth_env.push(EnvVar {
                 name: "INVESTIGATOR_AGENT_PROVIDER".to_owned(),
                 value: Some("bedrock".to_owned()),
@@ -455,7 +472,7 @@ fn codex_args(config: &AgentJobConfig, prompt: String) -> Vec<String> {
         "--model".to_owned(),
         config.model.clone(),
     ];
-    if let AgentProvider::Bedrock { region } = &config.provider {
+    if let AgentProvider::Bedrock { region, project_id } = &config.provider {
         args.extend([
             "-c".to_owned(),
             "model_provider=\"bedrock\"".to_owned(),
@@ -467,6 +484,10 @@ fn codex_args(config: &AgentJobConfig, prompt: String) -> Vec<String> {
             "model_providers.bedrock.env_key=\"BEDROCK_API_KEY\"".to_owned(),
             "-c".to_owned(),
             "model_providers.bedrock.wire_api=\"responses\"".to_owned(),
+            "-c".to_owned(),
+            format!(
+                "model_providers.bedrock.http_headers={{\"OpenAI-Project\"=\"{project_id}\"}}"
+            ),
         ]);
     }
     args.push(prompt);
@@ -639,6 +660,7 @@ mod tests {
         let config = AgentJobConfig {
             provider: AgentProvider::Bedrock {
                 region: "us-east-1".into(),
+                project_id: "proj_investigator".into(),
             },
             model: "openai.gpt-5.6-terra".into(),
             auth: AgentAuth::WorkloadIdentity,
@@ -653,6 +675,9 @@ mod tests {
             args.iter()
                 .any(|arg| arg.contains("bedrock-mantle.us-east-1"))
         );
+        assert!(args.iter().any(|arg| {
+            arg == "model_providers.bedrock.http_headers={\"OpenAI-Project\"=\"proj_investigator\"}"
+        }));
     }
 
     #[test]

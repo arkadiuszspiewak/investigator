@@ -205,7 +205,7 @@ For Bedrock with a stored API key:
 
 ```yaml
 agent:
-  provider: {type: bedrock, model: openai.gpt-5.6-terra, region: us-east-1}
+  provider: {type: bedrock, model: openai.gpt-5.6-terra, region: us-east-1, projectId: proj_example}
   auth:
     type: apiKey
     apiKeySecretRef: {name: bedrock-api-key, key: api-key}
@@ -215,7 +215,7 @@ For Bedrock with EKS Pod Identity or IRSA:
 
 ```yaml
 agent:
-  provider: {type: bedrock, model: openai.gpt-5.6-terra, region: us-east-1}
+  provider: {type: bedrock, model: openai.gpt-5.6-terra, region: us-east-1, projectId: proj_example}
   auth: {type: workloadIdentity}
   serviceAccount:
     create: true
@@ -226,6 +226,8 @@ agent:
 EKS Pod Identity associations are configured outside the chart. For IRSA, add
 `eks.amazonaws.com/role-arn` to `agent.serviceAccount.annotations`. The role
 must be allowed to invoke the selected Bedrock model through the Mantle endpoint.
+The required `projectId` is sent as the `OpenAI-Project` header on every request,
+so usage is isolated in the tagged Bedrock Mantle project instead of `default`.
 
 Agent Job placement is cluster policy and is configured once in Helm, rather
 than on individual Investigation resources. For example:

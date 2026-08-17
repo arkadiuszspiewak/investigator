@@ -63,6 +63,8 @@ spec:
             {{- if eq .Values.agent.provider.type "bedrock" }}
             - name: INVESTIGATOR_AGENT_REGION
               value: {{ required "agent.provider.region is required for Bedrock" .Values.agent.provider.region | quote }}
+            - name: INVESTIGATOR_AGENT_PROJECT_ID
+              value: {{ required "agent.provider.projectId is required for Bedrock" .Values.agent.provider.projectId | quote }}
             {{- end }}
             {{- if eq .Values.agent.auth.type "apiKey" }}
             - name: INVESTIGATOR_AGENT_API_KEY_SECRET_NAME
