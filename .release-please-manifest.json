@@ -1,10 +1,10 @@
 {
-  "apps/investigator": "0.3.1",
-  "apps/investigator-cli": "0.3.1",
-  "apps/investigator-alerts": "0.4.1",
+  "apps/investigator": "0.3.2",
+  "apps/investigator-cli": "0.3.2",
+  "apps/investigator-alerts": "0.4.2",
   "servers/kubernetes-mcp": "0.1.1",
   "servers/prometheus-mcp": "0.1.1",
   "servers/alertmanager-mcp": "0.1.1",
   "charts/investigator-platform": "0.3.1",
-  "docker": "0.3.0"
+  "docker": "0.3.1"
 }
