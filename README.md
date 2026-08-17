@@ -187,31 +187,52 @@ CRD or controller.
 5. The agent receives those endpoints as `INVESTIGATOR_MCP_SERVERS`;
    its image translates that JSON into Codex configuration.
 
-Create a Secret for one of the two supported Codex credential modes, then
-reference it from `spec.auth`:
+Agent provider and authentication are global Helm configuration. Investigation
+resources contain conversation state only. For OpenAI API-key authentication:
 
 ```sh
 kubectl -n investigations create secret generic openai-api-key \
   --from-literal=api-key="$OPENAI_API_KEY"
 
-kubectl -n investigations create secret generic codex-auth \
-  --from-file=auth.json="$HOME/.codex/auth.json"
 ```
 
-Use either `auth.apiKeySecretRef` or `auth.authJsonSecretRef`, never both. API
-keys are exposed to the runner as `OPENAI_API_KEY`. An `auth.json` is copied
-into an ephemeral, writable `CODEX_HOME`; the Kubernetes Secret remains
-read-only.
+Configure `agent.provider`, `agent.auth`, and `agent.serviceAccount`. Supported
+modes are OpenAI with `apiKey` or `authJson`, and Bedrock with `apiKey` or
+`workloadIdentity`. Workload identity uses EKS Pod Identity or IRSA credentials
+to generate a region-bound, short-lived Bedrock bearer token when each Job starts.
 
-The ServiceAccount named by `spec.serviceAccountName` is the investigation's
-security boundary. Do not use the controller ServiceAccount for agent Jobs.
+For Bedrock with a stored API key:
+
+```yaml
+agent:
+  provider: {type: bedrock, model: openai.gpt-5.6-terra, region: us-east-1}
+  auth:
+    type: apiKey
+    apiKeySecretRef: {name: bedrock-api-key, key: api-key}
+```
+
+For Bedrock with EKS Pod Identity or IRSA:
+
+```yaml
+agent:
+  provider: {type: bedrock, model: openai.gpt-5.6-terra, region: us-east-1}
+  auth: {type: workloadIdentity}
+  serviceAccount:
+    create: true
+    name: investigator-agent
+    annotations: {}
+```
+
+EKS Pod Identity associations are configured outside the chart. For IRSA, add
+`eks.amazonaws.com/role-arn` to `agent.serviceAccount.annotations`. The role
+must be allowed to invoke the selected Bedrock model through the Mantle endpoint.
 
 Agent Job placement is cluster policy and is configured once in Helm, rather
 than on individual Investigation resources. For example:
 
 ```yaml
-investigator:
-  agentJob:
+agent:
+  job:
     nodeSelector: {}
     tolerations: []
     affinity:
@@ -227,7 +248,7 @@ investigator:
                   operator: DoesNotExist
 ```
 
-The controller applies `investigator.agentJob.nodeSelector`, `affinity`, and
+The controller applies `agent.job.nodeSelector`, `affinity`, and
 `tolerations` to every newly created investigation Job. Changing these settings
 does not mutate Jobs that Kubernetes has already created.
 
@@ -242,11 +263,11 @@ See [Alertmanager MCP server](docs/alertmanager-mcp.md) for alert investigation 
 helm upgrade --install investigator charts/investigator-platform \
   --namespace investigations --create-namespace \
   --set investigator.image.repository=ghcr.io/my-org/investigator \
-  --set investigator.agentImage.tag=0.1.0 \
+  --set agent.image.tag=0.1.0 \
   --set mcpServers.kubernetes.image.repository=ghcr.io/my-org/kubernetes-mcp
 ```
 
-`investigator.agentImage` configures the Codex agent image used by every
+`agent.image` configures the Codex agent image used by every
 Investigation Job. Individual Investigation resources cannot override it.
 
 Each provider has dedicated configuration under `mcpServers.<provider>`. Copy

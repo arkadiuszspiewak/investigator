@@ -19,7 +19,26 @@ use kube::{
 use serde_json::json;
 
 use crate::error::ReconcileError;
-use investigator::crd::{AgentAuth, Investigation, InvestigationAnswer, InvestigationStatus};
+use investigator::crd::{Investigation, InvestigationAnswer, InvestigationStatus};
+
+#[derive(Clone, Debug, PartialEq)]
+enum AgentProvider {
+    OpenAi,
+    Bedrock { region: String },
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum AgentAuth {
+    ApiKey {
+        secret_name: String,
+        secret_key: String,
+    },
+    AuthJson {
+        secret_name: String,
+        secret_key: String,
+    },
+    WorkloadIdentity,
+}
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -37,6 +56,10 @@ struct Context {
 #[derive(Clone, Debug)]
 pub struct AgentJobConfig {
     image: String,
+    service_account_name: String,
+    model: String,
+    provider: AgentProvider,
+    auth: AgentAuth,
     mcp_servers: Vec<McpServer>,
     node_selector: BTreeMap<String, String>,
     affinity: Option<Affinity>,
@@ -44,26 +67,67 @@ pub struct AgentJobConfig {
 }
 
 impl AgentJobConfig {
-    pub fn from_env() -> Result<Self, serde_json::Error> {
+    pub fn from_env() -> Result<Self, String> {
+        let provider_name =
+            std::env::var("INVESTIGATOR_AGENT_PROVIDER").unwrap_or_else(|_| "openai".to_owned());
+        let provider = match provider_name.as_str() {
+            "openai" => AgentProvider::OpenAi,
+            "bedrock" => AgentProvider::Bedrock {
+                region: required_env("INVESTIGATOR_AGENT_REGION")?,
+            },
+            _ => return Err(format!("unsupported agent provider: {provider_name}")),
+        };
+        let auth_name =
+            std::env::var("INVESTIGATOR_AGENT_AUTH_TYPE").unwrap_or_else(|_| "apiKey".to_owned());
+        let auth = match auth_name.as_str() {
+            "apiKey" => AgentAuth::ApiKey {
+                secret_name: required_env("INVESTIGATOR_AGENT_API_KEY_SECRET_NAME")?,
+                secret_key: required_env("INVESTIGATOR_AGENT_API_KEY_SECRET_KEY")?,
+            },
+            "authJson" => AgentAuth::AuthJson {
+                secret_name: required_env("INVESTIGATOR_AGENT_AUTH_JSON_SECRET_NAME")?,
+                secret_key: required_env("INVESTIGATOR_AGENT_AUTH_JSON_SECRET_KEY")?,
+            },
+            "workloadIdentity" => AgentAuth::WorkloadIdentity,
+            _ => return Err(format!("unsupported agent auth type: {auth_name}")),
+        };
+        match (&provider, &auth) {
+            (AgentProvider::OpenAi, AgentAuth::WorkloadIdentity)
+            | (AgentProvider::Bedrock { .. }, AgentAuth::AuthJson { .. }) => {
+                return Err(format!(
+                    "invalid provider/auth combination: {provider_name}/{auth_name}"
+                ));
+            }
+            _ => {}
+        }
         Ok(Self {
             image: std::env::var("INVESTIGATOR_AGENT_IMAGE").unwrap_or_else(|_| {
                 "ghcr.io/arkadiuszspiewak/investigator-agent:latest".to_owned()
             }),
+            service_account_name: std::env::var("INVESTIGATOR_AGENT_SERVICE_ACCOUNT")
+                .unwrap_or_else(|_| "investigator-agent".to_owned()),
+            model: required_env("INVESTIGATOR_AGENT_MODEL")?,
+            provider,
+            auth,
             mcp_servers: serde_json::from_str(
                 &std::env::var("INVESTIGATOR_MCP_SERVERS").unwrap_or_else(|_| "[]".to_owned()),
-            )?,
+            )
+            .map_err(|error| error.to_string())?,
             node_selector: serde_json::from_str(
                 &std::env::var("INVESTIGATOR_AGENT_JOB_NODE_SELECTOR")
                     .unwrap_or_else(|_| "{}".to_owned()),
-            )?,
+            )
+            .map_err(|error| error.to_string())?,
             affinity: serde_json::from_str(
                 &std::env::var("INVESTIGATOR_AGENT_JOB_AFFINITY")
                     .unwrap_or_else(|_| "null".to_owned()),
-            )?,
+            )
+            .map_err(|error| error.to_string())?,
             tolerations: serde_json::from_str(
                 &std::env::var("INVESTIGATOR_AGENT_JOB_TOLERATIONS")
                     .unwrap_or_else(|_| "[]".to_owned()),
-            )?,
+            )
+            .map_err(|error| error.to_string())?,
         })
     }
 }
@@ -72,12 +136,23 @@ impl Default for AgentJobConfig {
     fn default() -> Self {
         Self {
             image: "ghcr.io/arkadiuszspiewak/investigator-agent:latest".to_owned(),
+            service_account_name: "investigator-agent".to_owned(),
+            model: "gpt-5.6-terra".to_owned(),
+            provider: AgentProvider::OpenAi,
+            auth: AgentAuth::ApiKey {
+                secret_name: "openai-api-key".to_owned(),
+                secret_key: "api-key".to_owned(),
+            },
             mcp_servers: vec![],
             node_selector: BTreeMap::new(),
             affinity: None,
             tolerations: vec![],
         }
     }
+}
+
+fn required_env(name: &str) -> Result<String, String> {
+    std::env::var(name).map_err(|_| format!("missing required environment variable {name}"))
 }
 
 pub async fn run(client: Client, agent_job: AgentJobConfig) {
@@ -290,8 +365,32 @@ fn agent_job(
         .controller_owner_ref(&())
         .ok_or(ReconcileError::MissingOwnerReference)?;
     let mcp_servers = serde_json::to_string(&config.mcp_servers)?;
-    let (auth_env, init_containers, volumes, volume_mounts) =
-        agent_auth(&investigation.spec.auth, &config.image)?;
+    let (mut auth_env, init_containers, volumes, volume_mounts) =
+        agent_auth(config, &config.image)?;
+    auth_env.push(EnvVar {
+        name: "INVESTIGATOR_AGENT_MODEL".to_owned(),
+        value: Some(config.model.clone()),
+        ..Default::default()
+    });
+    match &config.provider {
+        AgentProvider::OpenAi => auth_env.push(EnvVar {
+            name: "INVESTIGATOR_AGENT_PROVIDER".to_owned(),
+            value: Some("openai".to_owned()),
+            ..Default::default()
+        }),
+        AgentProvider::Bedrock { region } => {
+            auth_env.push(EnvVar {
+                name: "INVESTIGATOR_AGENT_PROVIDER".to_owned(),
+                value: Some("bedrock".to_owned()),
+                ..Default::default()
+            });
+            auth_env.push(EnvVar {
+                name: "AWS_REGION".to_owned(),
+                value: Some(region.clone()),
+                ..Default::default()
+            });
+        }
+    }
     Ok(Job {
         metadata: ObjectMeta {
             name: Some(name),
@@ -313,7 +412,7 @@ fn agent_job(
                 }),
                 spec: Some(PodSpec {
                     restart_policy: Some("Never".to_owned()),
-                    service_account_name: Some(investigation.spec.service_account_name.clone()),
+                    service_account_name: Some(config.service_account_name.clone()),
                     node_selector: (!config.node_selector.is_empty())
                         .then(|| config.node_selector.clone()),
                     affinity: config.affinity.clone(),
@@ -322,22 +421,16 @@ fn agent_job(
                     containers: vec![Container {
                         name: "codex".to_owned(),
                         image: Some(config.image.clone()),
-                        args: Some(vec![
-                            "exec".to_owned(),
-                            "--approve-for-me".to_owned(),
-                            "--skip-git-repo-check".to_owned(),
-                            "--output-last-message".to_owned(),
-                            "/dev/termination-log".to_owned(),
-                            prompt,
-                        ]),
-                        env: Some(vec![
-                            EnvVar {
+                        args: Some(codex_args(config, prompt)),
+                        env: Some({
+                            let mut env = vec![EnvVar {
                                 name: "INVESTIGATOR_MCP_SERVERS".to_owned(),
                                 value: Some(mcp_servers),
                                 ..Default::default()
-                            },
-                            auth_env,
-                        ]),
+                            }];
+                            env.append(&mut auth_env);
+                            env
+                        }),
                         volume_mounts: Some(volume_mounts),
                         ..Default::default()
                     }],
@@ -352,14 +445,45 @@ fn agent_job(
     })
 }
 
+fn codex_args(config: &AgentJobConfig, prompt: String) -> Vec<String> {
+    let mut args = vec![
+        "exec".to_owned(),
+        "--approve-for-me".to_owned(),
+        "--skip-git-repo-check".to_owned(),
+        "--output-last-message".to_owned(),
+        "/dev/termination-log".to_owned(),
+        "--model".to_owned(),
+        config.model.clone(),
+    ];
+    if let AgentProvider::Bedrock { region } = &config.provider {
+        args.extend([
+            "-c".to_owned(),
+            "model_provider=\"bedrock\"".to_owned(),
+            "-c".to_owned(),
+            "model_providers.bedrock.name=\"Amazon Bedrock\"".to_owned(),
+            "-c".to_owned(),
+            format!("model_providers.bedrock.base_url=\"https://bedrock-mantle.{region}.api.aws/openai/v1\""),
+            "-c".to_owned(),
+            "model_providers.bedrock.env_key=\"BEDROCK_API_KEY\"".to_owned(),
+            "-c".to_owned(),
+            "model_providers.bedrock.wire_api=\"responses\"".to_owned(),
+        ]);
+    }
+    args.push(prompt);
+    args
+}
+
 type AgentAuthResources = (
-    EnvVar,
+    Vec<EnvVar>,
     Option<Vec<Container>>,
     Vec<Volume>,
     Vec<VolumeMount>,
 );
 
-fn agent_auth(auth: &AgentAuth, agent_image: &str) -> Result<AgentAuthResources, ReconcileError> {
+fn agent_auth(
+    config: &AgentJobConfig,
+    agent_image: &str,
+) -> Result<AgentAuthResources, ReconcileError> {
     let codex_home = Volume {
         name: "codex-home".to_owned(),
         empty_dir: Some(EmptyDirVolumeSource::default()),
@@ -371,31 +495,41 @@ fn agent_auth(auth: &AgentAuth, agent_image: &str) -> Result<AgentAuthResources,
         ..Default::default()
     };
 
-    match (&auth.api_key_secret_ref, &auth.auth_json_secret_ref) {
-        (Some(secret), None) => Ok((
-            EnvVar {
-                name: "OPENAI_API_KEY".to_owned(),
+    match &config.auth {
+        AgentAuth::ApiKey {
+            secret_name,
+            secret_key,
+        } => Ok((
+            vec![EnvVar {
+                name: match config.provider {
+                    AgentProvider::OpenAi => "OPENAI_API_KEY",
+                    AgentProvider::Bedrock { .. } => "BEDROCK_API_KEY",
+                }
+                .to_owned(),
                 value_from: Some(EnvVarSource {
                     secret_key_ref: Some(SecretKeySelector {
-                        name: secret.name.clone(),
-                        key: secret.key.clone(),
+                        name: secret_name.clone(),
+                        key: secret_key.clone(),
                         ..Default::default()
                     }),
                     ..Default::default()
                 }),
                 ..Default::default()
-            },
+            }],
             None,
             vec![codex_home],
             vec![codex_home_mount],
         )),
-        (None, Some(secret)) => {
+        AgentAuth::AuthJson {
+            secret_name,
+            secret_key,
+        } => {
             let auth_input = Volume {
                 name: "codex-auth".to_owned(),
                 secret: Some(SecretVolumeSource {
-                    secret_name: Some(secret.name.clone()),
+                    secret_name: Some(secret_name.clone()),
                     items: Some(vec![KeyToPath {
-                        key: secret.key.clone(),
+                        key: secret_key.clone(),
                         path: "auth.json".to_owned(),
                         ..Default::default()
                     }]),
@@ -423,17 +557,26 @@ fn agent_auth(auth: &AgentAuth, agent_image: &str) -> Result<AgentAuthResources,
                 ..Default::default()
             };
             Ok((
-                EnvVar {
+                vec![EnvVar {
                     name: "CODEX_HOME".to_owned(),
                     value: Some("/home/codex/.codex".to_owned()),
                     ..Default::default()
-                },
+                }],
                 Some(vec![init]),
                 vec![codex_home, auth_input],
                 vec![codex_home_mount],
             ))
         }
-        _ => Err(ReconcileError::InvalidAuth),
+        AgentAuth::WorkloadIdentity => Ok((
+            vec![EnvVar {
+                name: "INVESTIGATOR_BEDROCK_WORKLOAD_IDENTITY".to_owned(),
+                value: Some("true".to_owned()),
+                ..Default::default()
+            }],
+            None,
+            vec![codex_home],
+            vec![codex_home_mount],
+        )),
     }
 }
 
@@ -448,26 +591,26 @@ fn error_policy(_: Arc<Investigation>, error: &ReconcileError, _: Arc<Context>) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use investigator::crd::{InvestigationSpec, SecretKeyRef};
+    use investigator::crd::InvestigationSpec;
     use std::collections::BTreeMap;
 
-    fn secret(name: &str, key: &str) -> SecretKeyRef {
-        SecretKeyRef {
-            name: name.to_owned(),
-            key: key.to_owned(),
+    fn config_with_auth(auth: AgentAuth) -> AgentJobConfig {
+        AgentJobConfig {
+            auth,
+            ..AgentJobConfig::default()
         }
     }
 
     #[test]
     fn api_key_auth_uses_secret_key_ref() {
-        let auth = AgentAuth {
-            api_key_secret_ref: Some(secret("openai", "api-key")),
-            auth_json_secret_ref: None,
-        };
+        let config = config_with_auth(AgentAuth::ApiKey {
+            secret_name: "openai".into(),
+            secret_key: "api-key".into(),
+        });
 
-        let (env, init, volumes, mounts) = agent_auth(&auth, "agent:test").unwrap();
-        let selector = env.value_from.unwrap().secret_key_ref.unwrap();
-        assert_eq!(env.name, "OPENAI_API_KEY");
+        let (env, init, volumes, mounts) = agent_auth(&config, "agent:test").unwrap();
+        let selector = env[0].value_from.clone().unwrap().secret_key_ref.unwrap();
+        assert_eq!(env[0].name, "OPENAI_API_KEY");
         assert_eq!(selector.name, "openai");
         assert_eq!(selector.key, "api-key");
         assert!(init.is_none());
@@ -477,39 +620,39 @@ mod tests {
 
     #[test]
     fn auth_json_uses_init_container_and_writable_codex_home() {
-        let auth = AgentAuth {
-            api_key_secret_ref: None,
-            auth_json_secret_ref: Some(secret("codex-auth", "credentials.json")),
-        };
+        let config = config_with_auth(AgentAuth::AuthJson {
+            secret_name: "codex-auth".into(),
+            secret_key: "credentials.json".into(),
+        });
 
-        let (env, init, volumes, mounts) = agent_auth(&auth, "agent:test").unwrap();
+        let (env, init, volumes, mounts) = agent_auth(&config, "agent:test").unwrap();
         let init = init.unwrap();
-        assert_eq!(env.name, "CODEX_HOME");
-        assert_eq!(env.value.as_deref(), Some("/home/codex/.codex"));
+        assert_eq!(env[0].name, "CODEX_HOME");
+        assert_eq!(env[0].value.as_deref(), Some("/home/codex/.codex"));
         assert_eq!(init[0].image.as_deref(), Some("agent:test"));
         assert_eq!(volumes.len(), 2);
         assert_eq!(mounts[0].name, "codex-home");
     }
 
     #[test]
-    fn auth_requires_exactly_one_source() {
-        let neither = AgentAuth {
-            api_key_secret_ref: None,
-            auth_json_secret_ref: None,
+    fn bedrock_workload_identity_configures_token_generation_and_provider() {
+        let config = AgentJobConfig {
+            provider: AgentProvider::Bedrock {
+                region: "us-east-1".into(),
+            },
+            model: "openai.gpt-5.6-terra".into(),
+            auth: AgentAuth::WorkloadIdentity,
+            ..AgentJobConfig::default()
         };
-        assert!(matches!(
-            agent_auth(&neither, "agent:test"),
-            Err(ReconcileError::InvalidAuth)
-        ));
-
-        let both = AgentAuth {
-            api_key_secret_ref: Some(secret("openai", "api-key")),
-            auth_json_secret_ref: Some(secret("codex-auth", "auth.json")),
-        };
-        assert!(matches!(
-            agent_auth(&both, "agent:test"),
-            Err(ReconcileError::InvalidAuth)
-        ));
+        let (env, init, _, _) = agent_auth(&config, "agent:test").unwrap();
+        assert!(init.is_none());
+        assert_eq!(env[0].name, "INVESTIGATOR_BEDROCK_WORKLOAD_IDENTITY");
+        let args = codex_args(&config, "investigate".into());
+        assert!(args.iter().any(|arg| arg == "model_provider=\"bedrock\""));
+        assert!(
+            args.iter()
+                .any(|arg| arg.contains("bedrock-mantle.us-east-1"))
+        );
     }
 
     #[test]
@@ -519,16 +662,18 @@ mod tests {
             InvestigationSpec {
                 query: "investigate".to_owned(),
                 questions: vec![],
-                auth: AgentAuth {
-                    api_key_secret_ref: Some(secret("openai", "api-key")),
-                    auth_json_secret_ref: None,
-                },
-                service_account_name: "agent".to_owned(),
             },
         );
         investigation.metadata.uid = Some("test-uid".to_owned());
         let config = AgentJobConfig {
             image: "agent:test".to_owned(),
+            service_account_name: "agent".to_owned(),
+            model: "gpt-test".to_owned(),
+            provider: AgentProvider::OpenAi,
+            auth: AgentAuth::ApiKey {
+                secret_name: "openai".into(),
+                secret_key: "api-key".into(),
+            },
             mcp_servers: vec![McpServer {
                 name: "kubernetes".to_owned(),
                 url: "http://kubernetes-mcp:8080/mcp".to_owned(),
@@ -576,6 +721,8 @@ mod tests {
                     "--skip-git-repo-check",
                     "--output-last-message",
                     "/dev/termination-log",
+                    "--model",
+                    "gpt-test",
                     "investigate",
                 ]
                 .map(str::to_owned)
@@ -591,11 +738,6 @@ mod tests {
             InvestigationSpec {
                 query: "investigate".to_owned(),
                 questions: vec![],
-                auth: AgentAuth {
-                    api_key_secret_ref: Some(secret("openai", "api-key")),
-                    auth_json_secret_ref: None,
-                },
-                service_account_name: "agent".to_owned(),
             },
         );
         investigation.metadata.uid = Some("old-uid".to_owned());
@@ -619,11 +761,6 @@ mod tests {
             InvestigationSpec {
                 query: "investigate".to_owned(),
                 questions: vec![],
-                auth: AgentAuth {
-                    api_key_secret_ref: Some(secret("openai", "api-key")),
-                    auth_json_secret_ref: None,
-                },
-                service_account_name: "agent".to_owned(),
             },
         );
         assert_eq!(

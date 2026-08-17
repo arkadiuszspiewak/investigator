@@ -23,7 +23,7 @@ spec:
           properties:
             spec:
               type: object
-              required: [query, auth]
+              required: [query]
               properties:
                 query:
                   type: string
@@ -37,27 +37,6 @@ spec:
                     properties:
                       id: {type: string, minLength: 1}
                       query: {type: string, minLength: 1}
-                auth:
-                  type: object
-                  oneOf:
-                    - required: [apiKeySecretRef]
-                    - required: [authJsonSecretRef]
-                  properties:
-                    apiKeySecretRef:
-                      type: object
-                      required: [name, key]
-                      properties:
-                        name: {type: string, minLength: 1}
-                        key: {type: string, minLength: 1}
-                    authJsonSecretRef:
-                      type: object
-                      required: [name, key]
-                      properties:
-                        name: {type: string, minLength: 1}
-                        key: {type: string, minLength: 1}
-                serviceAccountName:
-                  type: string
-                  default: investigator-agent
             status:
               type: object
               properties:

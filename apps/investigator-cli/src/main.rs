@@ -8,7 +8,7 @@ use std::{
 
 use clap::{ArgGroup, Parser};
 use error::AppError;
-use investigator::crd::{AgentAuth, Investigation, InvestigationQuestion, InvestigationSpec};
+use investigator::crd::{Investigation, InvestigationQuestion, InvestigationSpec};
 use kube::{
     Api, Client,
     api::{Patch, PatchParams, PostParams},
@@ -41,9 +41,6 @@ struct Args {
 struct Config {
     #[serde(default = "default_namespace")]
     namespace: String,
-    #[serde(default = "default_service_account")]
-    service_account_name: String,
-    auth: AgentAuth,
 }
 
 #[tokio::main]
@@ -111,9 +108,6 @@ fn load_config(path: &Path) -> Result<Config, AppError> {
         source,
     })?;
     let config: Config = serde_json::from_str(&content)?;
-    if config.auth.api_key_secret_ref.is_some() == config.auth.auth_json_secret_ref.is_some() {
-        return Err(AppError::InvalidAuth);
-    }
     Ok(config)
 }
 
@@ -128,15 +122,13 @@ async fn create_investigation(
     api: &Api<Investigation>,
     name: &str,
     query: String,
-    config: &Config,
+    _config: &Config,
 ) -> Result<(), kube::Error> {
     let investigation = Investigation::new(
         name,
         InvestigationSpec {
             query,
             questions: vec![],
-            auth: config.auth.clone(),
-            service_account_name: config.service_account_name.clone(),
         },
     );
     api.create(&PostParams::default(), &investigation).await?;
@@ -288,9 +280,6 @@ fn timestamp_millis() -> u128 {
 fn default_namespace() -> String {
     "default".to_owned()
 }
-fn default_service_account() -> String {
-    "investigator-agent".to_owned()
-}
 
 #[cfg(test)]
 mod tests {
@@ -299,12 +288,8 @@ mod tests {
 
     #[test]
     fn minimal_config_uses_defaults() {
-        let config: Config = serde_json::from_str(
-            r#"{"auth":{"apiKeySecretRef":{"name":"openai","key":"api-key"}}}"#,
-        )
-        .unwrap();
+        let config: Config = serde_json::from_str("{}").unwrap();
         assert_eq!(config.namespace, "default");
-        assert_eq!(config.service_account_name, "investigator-agent");
     }
 
     #[test]
@@ -317,11 +302,6 @@ mod tests {
                     id: "q1".into(),
                     query: "follow-up".into(),
                 }],
-                auth: AgentAuth {
-                    api_key_secret_ref: None,
-                    auth_json_secret_ref: None,
-                },
-                service_account_name: default_service_account(),
             },
         );
         let mut investigation = investigation;

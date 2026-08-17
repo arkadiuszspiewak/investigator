@@ -36,8 +36,4 @@ pub(crate) enum ConfigurationError {
     ConflictingSlackSettings,
     #[error("Slack App delivery requires both SLACK_BOT_TOKEN and SLACK_CHANNEL")]
     IncompleteSlackAppSettings,
-    #[error("exactly one investigation credential env var must contain NAME:KEY")]
-    InvalidAuthSelection,
-    #[error("credential must use NAME:KEY")]
-    InvalidSecretReference,
 }

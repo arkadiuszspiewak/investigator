@@ -14,8 +14,6 @@ pub(crate) enum AppError {
     },
     #[error("could not parse configuration: {0}")]
     ParseConfig(#[from] serde_json::Error),
-    #[error("config auth must contain exactly one of apiKeySecretRef or authJsonSecretRef")]
-    InvalidAuth,
     #[error("Kubernetes request failed: {0}")]
     Kubernetes(#[from] kube::Error),
     #[error("terminal I/O failed: {0}")]

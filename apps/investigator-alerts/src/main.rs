@@ -10,7 +10,7 @@ use axum::{
 };
 use clap::Parser;
 use error::{AppError, ConfigurationError};
-use investigator::crd::{AgentAuth, Investigation, InvestigationSpec, SecretKeyRef};
+use investigator::crd::{Investigation, InvestigationSpec};
 use kube::{
     Api, Client,
     api::{Patch, PatchParams, PostParams},
@@ -30,16 +30,6 @@ struct Config {
         default_value = "Investigate this active alert. Explain what happened, why it happened, and how to fix it. Alert: {{alert}}"
     )]
     query: String,
-    #[arg(
-        long,
-        env = "INVESTIGATION_SERVICE_ACCOUNT",
-        default_value = "investigator-agent"
-    )]
-    service_account: String,
-    #[arg(long, env = "INVESTIGATION_API_KEY_SECRET")]
-    api_key_secret: Option<String>,
-    #[arg(long, env = "INVESTIGATION_AUTH_JSON_SECRET")]
-    auth_json_secret: Option<String>,
     #[arg(long, env = "SLACK_WEBHOOK_URL")]
     slack_webhook_url: Option<String>,
     /// Slack App bot token (xoxb-...). Must be used with SLACK_CHANNEL.
@@ -147,7 +137,6 @@ async fn main() -> std::process::ExitCode {
 
 async fn run() -> Result<(), AppError> {
     let config = Config::parse();
-    validate_auth(&config)?;
     let notification = notification_target(&config)?;
     validate_relay_mode(&config, notification.as_ref())?;
     let address: std::net::SocketAddr = config.bind_address.parse()?;
@@ -210,8 +199,6 @@ async fn investigate(state: Arc<AppState>, alert: Alert) -> Result<(), AppError>
         InvestigationSpec {
             query: state.config.query.replace("{{alert}}", &serialized),
             questions: vec![],
-            auth: configured_auth(&state.config)?,
-            service_account_name: state.config.service_account.clone(),
         },
     );
     match api.create(&PostParams::default(), &investigation).await {
@@ -403,31 +390,6 @@ async fn send_notification(
     }
 }
 
-fn validate_auth(config: &Config) -> Result<(), ConfigurationError> {
-    configured_auth(config).map(|_| ())
-}
-fn configured_auth(config: &Config) -> Result<AgentAuth, ConfigurationError> {
-    match (&config.api_key_secret, &config.auth_json_secret) {
-        (Some(value), None) => Ok(AgentAuth {
-            api_key_secret_ref: Some(secret_ref(value)?),
-            auth_json_secret_ref: None,
-        }),
-        (None, Some(value)) => Ok(AgentAuth {
-            api_key_secret_ref: None,
-            auth_json_secret_ref: Some(secret_ref(value)?),
-        }),
-        _ => Err(ConfigurationError::InvalidAuthSelection),
-    }
-}
-fn secret_ref(value: &str) -> Result<SecretKeyRef, ConfigurationError> {
-    let (name, key) = value
-        .split_once(':')
-        .ok_or(ConfigurationError::InvalidSecretReference)?;
-    Ok(SecretKeyRef {
-        name: name.into(),
-        key: key.into(),
-    })
-}
 fn alert_investigation_name(alert: &Alert) -> String {
     let identity = if alert.fingerprint.is_empty() {
         alert
@@ -467,9 +429,6 @@ mod tests {
             bind_address: "127.0.0.1:8080".into(),
             namespace: "default".into(),
             query: "investigate {{alert}}".into(),
-            service_account: "agent".into(),
-            api_key_secret: Some("openai:api-key".into()),
-            auth_json_secret: None,
             slack_webhook_url: None,
             slack_bot_token: None,
             slack_channel: None,

@@ -48,10 +48,10 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end -}}
 
 {{- define "investigator-platform.agentServiceAccount" -}}
-{{- if .Values.investigator.agentServiceAccount.create -}}
-{{- default (printf "%s-agent" (include "investigator-platform.fullname" .)) .Values.investigator.agentServiceAccount.name | trunc 63 | trimSuffix "-" -}}
+{{- if .Values.agent.serviceAccount.create -}}
+{{- default (printf "%s-agent" (include "investigator-platform.fullname" .)) .Values.agent.serviceAccount.name | trunc 63 | trimSuffix "-" -}}
 {{- else -}}
-{{- required "investigator.agentServiceAccount.name is required when create=false" .Values.investigator.agentServiceAccount.name | trunc 63 | trimSuffix "-" -}}
+{{- required "agent.serviceAccount.name is required when create=false" .Values.agent.serviceAccount.name | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 {{- end -}}
 

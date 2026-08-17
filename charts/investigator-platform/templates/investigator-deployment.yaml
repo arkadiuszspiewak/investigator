@@ -51,15 +51,38 @@ spec:
             {{- toYaml .Values.investigator.securityContext | nindent 12 }}
           env:
             - name: INVESTIGATOR_AGENT_IMAGE
-              value: {{ include "investigator-platform.image" (dict "root" . "image" .Values.investigator.agentImage) | quote }}
+              value: {{ include "investigator-platform.image" (dict "root" . "image" .Values.agent.image) | quote }}
+            - name: INVESTIGATOR_AGENT_SERVICE_ACCOUNT
+              value: {{ include "investigator-platform.agentServiceAccount" . | quote }}
+            - name: INVESTIGATOR_AGENT_PROVIDER
+              value: {{ .Values.agent.provider.type | quote }}
+            - name: INVESTIGATOR_AGENT_MODEL
+              value: {{ required "agent.provider.model is required" .Values.agent.provider.model | quote }}
+            - name: INVESTIGATOR_AGENT_AUTH_TYPE
+              value: {{ .Values.agent.auth.type | quote }}
+            {{- if eq .Values.agent.provider.type "bedrock" }}
+            - name: INVESTIGATOR_AGENT_REGION
+              value: {{ required "agent.provider.region is required for Bedrock" .Values.agent.provider.region | quote }}
+            {{- end }}
+            {{- if eq .Values.agent.auth.type "apiKey" }}
+            - name: INVESTIGATOR_AGENT_API_KEY_SECRET_NAME
+              value: {{ required "agent.auth.apiKeySecretRef.name is required" .Values.agent.auth.apiKeySecretRef.name | quote }}
+            - name: INVESTIGATOR_AGENT_API_KEY_SECRET_KEY
+              value: {{ required "agent.auth.apiKeySecretRef.key is required" .Values.agent.auth.apiKeySecretRef.key | quote }}
+            {{- else if eq .Values.agent.auth.type "authJson" }}
+            - name: INVESTIGATOR_AGENT_AUTH_JSON_SECRET_NAME
+              value: {{ required "agent.auth.authJsonSecretRef.name is required" .Values.agent.auth.authJsonSecretRef.name | quote }}
+            - name: INVESTIGATOR_AGENT_AUTH_JSON_SECRET_KEY
+              value: {{ required "agent.auth.authJsonSecretRef.key is required" .Values.agent.auth.authJsonSecretRef.key | quote }}
+            {{- end }}
             - name: INVESTIGATOR_MCP_SERVERS
               value: {{ $mcpServers | toJson | quote }}
             - name: INVESTIGATOR_AGENT_JOB_NODE_SELECTOR
-              value: {{ .Values.investigator.agentJob.nodeSelector | toJson | quote }}
+              value: {{ .Values.agent.job.nodeSelector | toJson | quote }}
             - name: INVESTIGATOR_AGENT_JOB_AFFINITY
-              value: {{ ternary (.Values.investigator.agentJob.affinity | toJson) "null" (not (empty .Values.investigator.agentJob.affinity)) | quote }}
+              value: {{ ternary (.Values.agent.job.affinity | toJson) "null" (not (empty .Values.agent.job.affinity)) | quote }}
             - name: INVESTIGATOR_AGENT_JOB_TOLERATIONS
-              value: {{ .Values.investigator.agentJob.tolerations | toJson | quote }}
+              value: {{ .Values.agent.job.tolerations | toJson | quote }}
             {{- with .Values.investigator.env }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

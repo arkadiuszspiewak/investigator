@@ -6,6 +6,8 @@ pub(crate) enum AppError {
     Kubernetes(#[from] kube::Error),
     #[error("could not serialize the Investigation CRD: {0}")]
     Serialization(#[from] serde_json::Error),
+    #[error("invalid agent configuration: {0}")]
+    Configuration(String),
 }
 
 #[derive(Debug, Error)]
@@ -18,6 +20,4 @@ pub(crate) enum ReconcileError {
     MissingOwnerReference,
     #[error("could not serialize or deserialize pod configuration: {0}")]
     Serialization(#[from] serde_json::Error),
-    #[error("exactly one of auth.apiKeySecretRef or auth.authJsonSecretRef must be set")]
-    InvalidAuth,
 }

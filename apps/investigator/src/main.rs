@@ -39,7 +39,7 @@ async fn run() -> Result<(), AppError> {
 
     controller::run(
         Client::try_default().await?,
-        controller::AgentJobConfig::from_env()?,
+        controller::AgentJobConfig::from_env().map_err(AppError::Configuration)?,
     )
     .await;
     Ok(())

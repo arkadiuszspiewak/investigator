@@ -8,9 +8,3 @@ spec:
     Use the Kubernetes MCP and Prometheus MCP servers to list the pods in the flux-system namespace
     Analize logs, find any abnormal behaviours, Stuck deployment, bad helm charts etc.
     Check overall GitOps health of cluster.
-  agentImage: ghcr.io/arkadiuszspiewak/investigator-agent:latest
-  auth:
-    authJsonSecretRef:
-      name: codex-auth
-      key: auth.json
-  serviceAccountName: investigator-agent

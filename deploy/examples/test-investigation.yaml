@@ -8,9 +8,3 @@ spec:
     Use the Kubernetes MCP and Prometheus MCP server to audit pihole namespace.
     Analise why there is such diffrence beetwen ram usage of both pihole instances. Analize in detail why primary pihole has smaller database, why it report 0 blocked domain. Check config and how they are similiar.
     Do not make any changes.
-  agentImage: ghcr.io/arkadiuszspiewak/investigator-agent:latest
-  auth:
-    authJsonSecretRef:
-      name: codex-auth
-      key: auth.json
-  serviceAccountName: investigator-agent

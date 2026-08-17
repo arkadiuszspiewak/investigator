@@ -11,15 +11,8 @@ investigator:
     # Always is required for mutable tags such as main. Override to
     # IfNotPresent when using an immutable version tag or digest.
     pullPolicy: Always
-  # Image used by every Codex agent Job created by the controller.
-  agentImage:
-    repository: ghcr.io/arkadiuszspiewak/investigator-agent
-    tag: latest
-    digest: ""
   imagePullSecrets: []
   serviceAccount: {create: true, name: "", annotations: {}}
-  # For other Investigation namespaces, provision the same account there.
-  agentServiceAccount: {create: true, name: investigator-agent, annotations: {}}
   podAnnotations: {}
   podLabels: {}
   env: []
@@ -39,14 +32,26 @@ investigator:
   nodeSelector: {}
   tolerations: []
   affinity: {}
-  # Scheduling policy applied by the controller to every investigation Job.
-  # Investigation resources and clients cannot override these values.
-  agentJob:
+  rbac:
+    create: true
+
+# Global configuration for every short-lived Codex agent Job.
+agent:
+  image:
+    repository: ghcr.io/arkadiuszspiewak/investigator-agent
+    tag: latest
+    digest: ""
+  provider: {type: openai, model: gpt-5.6-terra, region: ""}
+  auth:
+    # apiKey, authJson, or workloadIdentity (Bedrock only).
+    type: apiKey
+    apiKeySecretRef: {name: openai-api-key, key: api-key}
+    authJsonSecretRef: {name: "", key: ""}
+  serviceAccount: {create: true, name: investigator-agent, annotations: {}}
+  job:
     nodeSelector: {}
     tolerations: []
     affinity: {}
-  rbac:
-    create: true
 
 # Long-running applications that consume the Investigation API. Copy an entry
 # to add future webhook, scheduler, or chat integrations without new templates.
@@ -67,10 +72,6 @@ apps:
     env:
       - name: INVESTIGATION_QUERY
         value: "Investigate this active Kubernetes alert and determine its likely cause: {{alert}}"
-      - name: INVESTIGATION_SERVICE_ACCOUNT
-        value: investigator-agent
-      # Add exactly one credential reference, for example:
-      # - {name: INVESTIGATION_API_KEY_SECRET, value: "openai-api-key:api-key"}
       # Configure Slack without putting its URL in values:
       # - {name: SLACK_WEBHOOK_URL, valueFrom: {secretKeyRef: {name: slack-webhook, key: url}}}
       # Or use a Slack App. Set both values and do not set SLACK_WEBHOOK_URL:

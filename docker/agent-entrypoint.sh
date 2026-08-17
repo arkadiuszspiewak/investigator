@@ -1,8 +1,13 @@
 #!/bin/sh
 set -eu
 
-if [ -z "${OPENAI_API_KEY:-}" ] && [ ! -f "${CODEX_HOME}/auth.json" ]; then
-  echo "Codex credentials are missing: set OPENAI_API_KEY or mount ${CODEX_HOME}/auth.json" >&2
+if [ "${INVESTIGATOR_BEDROCK_WORKLOAD_IDENTITY:-}" = "true" ]; then
+  BEDROCK_API_KEY=$(node /opt/investigator/bedrock-token.mjs)
+  export BEDROCK_API_KEY
+fi
+
+if [ -z "${OPENAI_API_KEY:-}" ] && [ -z "${BEDROCK_API_KEY:-}" ] && [ ! -f "${CODEX_HOME}/auth.json" ]; then
+  echo "Codex credentials are missing: configure an OpenAI key, Bedrock key, workload identity, or ${CODEX_HOME}/auth.json" >&2
   exit 1
 fi
 
