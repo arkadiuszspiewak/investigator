@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/arkadiuszspiewak/investigator/compare/investigator-v0.2.0...investigator-v0.3.0) (2026-08-17)
+
+
+### Features
+
+* aws bedrock support ([095377a](https://github.com/arkadiuszspiewak/investigator/commit/095377a0779acd71d15be30a4f336523b398e6f0))
+
 ## [0.2.0](https://github.com/arkadiuszspiewak/investigator/compare/investigator-v0.1.8...investigator-v0.2.0) (2026-08-16)
 
 
