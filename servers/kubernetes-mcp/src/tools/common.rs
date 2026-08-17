@@ -58,11 +58,13 @@ impl Default for GetNamespacedArgs {
 
 #[derive(Debug, Serialize, JsonSchema)]
 pub struct ResourceOutput {
+    #[schemars(with = "std::collections::BTreeMap<String, serde_json::Value>")]
     pub resource: Value,
 }
 
 #[derive(Debug, Serialize, JsonSchema)]
 pub struct ResourceListOutput {
+    #[schemars(with = "Vec<std::collections::BTreeMap<String, serde_json::Value>>")]
     pub resources: Vec<Value>,
 }
 
@@ -119,6 +121,20 @@ pub fn dynamic_api(
 
 pub const GET: &str = verbs::GET;
 pub const LIST: &str = verbs::LIST;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn arbitrary_kubernetes_resources_have_object_output_schemas() {
+        let resource = serde_json::to_value(schemars::schema_for!(ResourceOutput)).unwrap();
+        let list = serde_json::to_value(schemars::schema_for!(ResourceListOutput)).unwrap();
+
+        assert_eq!(resource["properties"]["resource"]["type"], "object");
+        assert_eq!(list["properties"]["resources"]["items"]["type"], "object");
+    }
+}
 
 pub fn read_only_annotations() -> Option<ToolAnnotations> {
     Some(ToolAnnotations::new().read_only(true).idempotent(true))
