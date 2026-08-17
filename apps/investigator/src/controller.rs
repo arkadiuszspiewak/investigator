@@ -479,15 +479,15 @@ fn codex_args(config: &AgentJobConfig, prompt: String) -> Vec<String> {
             "-c".to_owned(),
             "model_providers.bedrock.name=\"Amazon Bedrock\"".to_owned(),
             "-c".to_owned(),
-            format!("model_providers.bedrock.base_url=\"https://bedrock-mantle.{region}.api.aws/openai/v1\""),
+            format!(
+                "model_providers.bedrock.base_url=\"https://bedrock-mantle.{region}.api.aws/v1\""
+            ),
             "-c".to_owned(),
             "model_providers.bedrock.env_key=\"BEDROCK_API_KEY\"".to_owned(),
             "-c".to_owned(),
             "model_providers.bedrock.wire_api=\"responses\"".to_owned(),
             "-c".to_owned(),
-            format!(
-                "model_providers.bedrock.http_headers={{\"OpenAI-Project\"=\"{project_id}\"}}"
-            ),
+            format!("model_providers.bedrock.http_headers={{\"OpenAI-Project\"=\"{project_id}\"}}"),
         ]);
     }
     args.push(prompt);
@@ -671,10 +671,9 @@ mod tests {
         assert_eq!(env[0].name, "INVESTIGATOR_BEDROCK_WORKLOAD_IDENTITY");
         let args = codex_args(&config, "investigate".into());
         assert!(args.iter().any(|arg| arg == "model_provider=\"bedrock\""));
-        assert!(
-            args.iter()
-                .any(|arg| arg.contains("bedrock-mantle.us-east-1"))
-        );
+        assert!(args.iter().any(|arg| {
+            arg == "model_providers.bedrock.base_url=\"https://bedrock-mantle.us-east-1.api.aws/v1\""
+        }));
         assert!(args.iter().any(|arg| {
             arg == "model_providers.bedrock.http_headers={\"OpenAI-Project\"=\"proj_investigator\"}"
         }));
