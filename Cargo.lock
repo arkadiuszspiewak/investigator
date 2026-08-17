@@ -1470,7 +1470,7 @@ dependencies = [
 
 [[package]]
 name = "kubernetes-mcp"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "k8s-openapi",
  "kube",
