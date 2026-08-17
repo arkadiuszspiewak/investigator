@@ -1,5 +1,7 @@
 # Changelog
 
+## [0.4.2](https://github.com/arkadiuszspiewak/investigator/compare/investigator-alerts-v0.4.1...investigator-alerts-v0.4.2) (2026-08-17)
+
 ## [0.4.1](https://github.com/arkadiuszspiewak/investigator/compare/investigator-alerts-v0.4.0...investigator-alerts-v0.4.1) (2026-08-17)
 
 ## [0.4.0](https://github.com/arkadiuszspiewak/investigator/compare/investigator-alerts-v0.3.0...investigator-alerts-v0.4.0) (2026-08-17)

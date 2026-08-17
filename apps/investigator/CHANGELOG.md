@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/arkadiuszspiewak/investigator/compare/investigator-v0.3.1...investigator-v0.3.2) (2026-08-17)
+
+
+### Bug Fixes
+
+* Fix amazon bedrock ([dac9d12](https://github.com/arkadiuszspiewak/investigator/commit/dac9d12baf6d6c5df46cc9493715ceea5ebf2a96))
+
 ## [0.3.1](https://github.com/arkadiuszspiewak/investigator/compare/investigator-v0.3.0...investigator-v0.3.1) (2026-08-17)
 
 

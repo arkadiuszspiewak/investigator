@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/arkadiuszspiewak/investigator/compare/agent-v0.3.0...agent-v0.3.1) (2026-08-17)
+
+
+### Bug Fixes
+
+* Fix amazon bedrock ([dac9d12](https://github.com/arkadiuszspiewak/investigator/commit/dac9d12baf6d6c5df46cc9493715ceea5ebf2a96))
+
 ## [0.3.0](https://github.com/arkadiuszspiewak/investigator/compare/agent-v0.2.1...agent-v0.3.0) (2026-08-17)
 
 
