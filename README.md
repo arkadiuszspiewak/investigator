@@ -199,13 +199,14 @@ kubectl -n investigations create secret generic openai-api-key \
 Configure `agent.provider`, `agent.auth`, and `agent.serviceAccount`. Supported
 modes are OpenAI with `apiKey` or `authJson`, and Bedrock with `apiKey` or
 `workloadIdentity`. Workload identity uses EKS Pod Identity or IRSA credentials
-to generate a region-bound, short-lived Bedrock bearer token when each Job starts.
+to generate region-bound, short-lived Bedrock bearer tokens. Codex uses its
+native `amazon-bedrock` provider and refreshes the token during long-running Jobs.
 
 For Bedrock with a stored API key:
 
 ```yaml
 agent:
-  provider: {type: bedrock, model: openai.gpt-5.6-terra, region: us-east-1, projectId: proj_example}
+  provider: {type: bedrock, model: qwen.qwen3-coder-next, region: eu-central-1, projectId: proj_example}
   auth:
     type: apiKey
     apiKeySecretRef: {name: bedrock-api-key, key: api-key}
@@ -215,7 +216,7 @@ For Bedrock with EKS Pod Identity or IRSA:
 
 ```yaml
 agent:
-  provider: {type: bedrock, model: openai.gpt-5.6-terra, region: us-east-1, projectId: proj_example}
+  provider: {type: bedrock, model: qwen.qwen3-coder-next, region: eu-central-1, projectId: proj_example}
   auth: {type: workloadIdentity}
   serviceAccount:
     create: true

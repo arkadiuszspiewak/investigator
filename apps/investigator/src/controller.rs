@@ -475,20 +475,35 @@ fn codex_args(config: &AgentJobConfig, prompt: String) -> Vec<String> {
     if let AgentProvider::Bedrock { region, project_id } = &config.provider {
         args.extend([
             "-c".to_owned(),
-            "model_provider=\"bedrock\"".to_owned(),
-            "-c".to_owned(),
-            "model_providers.bedrock.name=\"Amazon Bedrock\"".to_owned(),
+            "model_provider=\"amazon-bedrock\"".to_owned(),
             "-c".to_owned(),
             format!(
-                "model_providers.bedrock.base_url=\"https://bedrock-mantle.{region}.api.aws/v1\""
+                "model_providers.amazon-bedrock.base_url=\"https://bedrock-mantle.{region}.api.aws/v1\""
             ),
             "-c".to_owned(),
-            "model_providers.bedrock.env_key=\"BEDROCK_API_KEY\"".to_owned(),
-            "-c".to_owned(),
-            "model_providers.bedrock.wire_api=\"responses\"".to_owned(),
-            "-c".to_owned(),
-            format!("model_providers.bedrock.http_headers={{\"OpenAI-Project\"=\"{project_id}\"}}"),
+            format!("model_providers.amazon-bedrock.http_headers={{\"OpenAI-Project\"=\"{project_id}\"}}"),
         ]);
+        match &config.auth {
+            AgentAuth::ApiKey { .. } => args.extend([
+                "-c".to_owned(),
+                "model_providers.amazon-bedrock.auth.command=\"/usr/bin/printenv\"".to_owned(),
+                "-c".to_owned(),
+                "model_providers.amazon-bedrock.auth.args=[\"BEDROCK_API_KEY\"]".to_owned(),
+                "-c".to_owned(),
+                "model_providers.amazon-bedrock.auth.refresh_interval_ms=0".to_owned(),
+            ]),
+            AgentAuth::WorkloadIdentity => args.extend([
+                "-c".to_owned(),
+                "model_providers.amazon-bedrock.auth.command=\"node\"".to_owned(),
+                "-c".to_owned(),
+                "model_providers.amazon-bedrock.auth.args=[\"/opt/investigator/bedrock-token.mjs\"]".to_owned(),
+                "-c".to_owned(),
+                "model_providers.amazon-bedrock.auth.refresh_interval_ms=300000".to_owned(),
+                "-c".to_owned(),
+                "model_providers.amazon-bedrock.auth.timeout_ms=10000".to_owned(),
+            ]),
+            AgentAuth::AuthJson { .. } => unreachable!("Bedrock auth.json is rejected at startup"),
+        }
     }
     args.push(prompt);
     args
@@ -588,16 +603,7 @@ fn agent_auth(
                 vec![codex_home_mount],
             ))
         }
-        AgentAuth::WorkloadIdentity => Ok((
-            vec![EnvVar {
-                name: "INVESTIGATOR_BEDROCK_WORKLOAD_IDENTITY".to_owned(),
-                value: Some("true".to_owned()),
-                ..Default::default()
-            }],
-            None,
-            vec![codex_home],
-            vec![codex_home_mount],
-        )),
+        AgentAuth::WorkloadIdentity => Ok((vec![], None, vec![codex_home], vec![codex_home_mount])),
     }
 }
 
@@ -668,15 +674,61 @@ mod tests {
         };
         let (env, init, _, _) = agent_auth(&config, "agent:test").unwrap();
         assert!(init.is_none());
-        assert_eq!(env[0].name, "INVESTIGATOR_BEDROCK_WORKLOAD_IDENTITY");
+        assert!(env.is_empty());
         let args = codex_args(&config, "investigate".into());
-        assert!(args.iter().any(|arg| arg == "model_provider=\"bedrock\""));
+        assert!(
+            args.iter()
+                .any(|arg| arg == "model_provider=\"amazon-bedrock\"")
+        );
         assert!(args.iter().any(|arg| {
-            arg == "model_providers.bedrock.base_url=\"https://bedrock-mantle.us-east-1.api.aws/v1\""
+            arg == "model_providers.amazon-bedrock.base_url=\"https://bedrock-mantle.us-east-1.api.aws/v1\""
         }));
         assert!(args.iter().any(|arg| {
-            arg == "model_providers.bedrock.http_headers={\"OpenAI-Project\"=\"proj_investigator\"}"
+            arg == "model_providers.amazon-bedrock.http_headers={\"OpenAI-Project\"=\"proj_investigator\"}"
         }));
+        assert!(
+            args.iter()
+                .any(|arg| { arg == "model_providers.amazon-bedrock.auth.command=\"node\"" })
+        );
+        assert!(args.iter().any(|arg| {
+            arg == "model_providers.amazon-bedrock.auth.args=[\"/opt/investigator/bedrock-token.mjs\"]"
+        }));
+        assert!(
+            !args
+                .iter()
+                .any(|arg| arg.contains("model_providers.bedrock"))
+        );
+    }
+
+    #[test]
+    fn bedrock_api_key_uses_native_provider_and_secret_backed_token_command() {
+        let config = AgentJobConfig {
+            provider: AgentProvider::Bedrock {
+                region: "eu-central-1".into(),
+                project_id: "proj_investigator".into(),
+            },
+            model: "openai.gpt-oss-120b".into(),
+            auth: AgentAuth::ApiKey {
+                secret_name: "bedrock-api-key".into(),
+                secret_key: "api-key".into(),
+            },
+            ..AgentJobConfig::default()
+        };
+        let (env, init, _, _) = agent_auth(&config, "agent:test").unwrap();
+        assert!(init.is_none());
+        assert_eq!(env[0].name, "BEDROCK_API_KEY");
+        let args = codex_args(&config, "investigate".into());
+        assert!(args.iter().any(|arg| {
+            arg == "model_providers.amazon-bedrock.auth.command=\"/usr/bin/printenv\""
+        }));
+        assert!(args.iter().any(|arg| {
+            arg == "model_providers.amazon-bedrock.auth.args=[\"BEDROCK_API_KEY\"]"
+        }));
+        assert!(
+            !args
+                .iter()
+                .any(|arg| arg.contains("model_providers.bedrock"))
+        );
     }
 
     #[test]
