@@ -1141,7 +1141,7 @@ dependencies = [
 
 [[package]]
 name = "investigator"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "futures",
  "k8s-openapi",
@@ -1157,7 +1157,7 @@ dependencies = [
 
 [[package]]
 name = "investigator-alerts"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "axum",
  "clap",
@@ -1175,7 +1175,7 @@ dependencies = [
 
 [[package]]
 name = "investigator-cli"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "clap",
  "investigator",

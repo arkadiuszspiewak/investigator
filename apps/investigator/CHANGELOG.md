@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/arkadiuszspiewak/investigator/compare/investigator-v0.3.0...investigator-v0.3.1) (2026-08-17)
+
+
+### Bug Fixes
+
+* Base url fix ([e5d3aad](https://github.com/arkadiuszspiewak/investigator/commit/e5d3aad13149a1f7b9b00b66a9f12a91d39b997b))
+
 ## [0.3.0](https://github.com/arkadiuszspiewak/investigator/compare/investigator-v0.2.0...investigator-v0.3.0) (2026-08-17)
 
 
