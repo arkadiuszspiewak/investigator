@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.0](https://github.com/arkadiuszspiewak/investigator/compare/investigator-v0.3.2...investigator-v1.0.0) (2026-08-17)
+
+
+### ⚠ BREAKING CHANGES
+
+* introduce interchanchable agents
+
+### Features
+
+* introduce interchanchable agents ([c7249f3](https://github.com/arkadiuszspiewak/investigator/commit/c7249f3c48f7929ed68b3827fe8a9c6553fcfc18))
+
 ## [0.3.2](https://github.com/arkadiuszspiewak/investigator/compare/investigator-v0.3.1...investigator-v0.3.2) (2026-08-17)
 
 
