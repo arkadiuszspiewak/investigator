@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/arkadiuszspiewak/investigator/compare/chart-v0.3.0...chart-v0.3.1) (2026-08-17)
+
+
+### Bug Fixes
+
+* release helm ([b0c212b](https://github.com/arkadiuszspiewak/investigator/commit/b0c212b2714f236bee469330455f995d7a1a69f5))
+
 ## [0.3.0](https://github.com/arkadiuszspiewak/investigator/compare/chart-v0.2.1...chart-v0.3.0) (2026-08-17)
 
 
