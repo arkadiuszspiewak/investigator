@@ -3,7 +3,6 @@ FROM node:22-bookworm-slim
 
 ARG CODEX_VERSION=latest
 RUN npm install --global "@openai/codex@${CODEX_VERSION}" \
-    && npm install --prefix /opt/investigator "@aws/bedrock-token-generator" \
     && apt-get update \
     && apt-get install --yes --no-install-recommends jq ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
@@ -11,9 +10,8 @@ RUN npm install --global "@openai/codex@${CODEX_VERSION}" \
     && install --directory --owner=65532 --group=65532 /home/codex/.codex \
     && install --directory --mode=0555 /workspace
 
-COPY --chmod=0755 docker/agent-entrypoint.sh /usr/local/bin/investigator-agent
-COPY --chmod=0555 docker/bedrock-token.mjs /opt/investigator/bedrock-token.mjs
-COPY --chown=0:0 --chmod=0444 docker/agent/AGENTS.md /workspace/AGENTS.md
+COPY --chmod=0755 agents/codex/entrypoint.sh /usr/local/bin/investigator-agent
+COPY --chown=0:0 --chmod=0444 agents/codex/AGENTS.md /workspace/AGENTS.md
 
 USER 65532:65532
 WORKDIR /workspace

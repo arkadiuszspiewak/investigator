@@ -103,7 +103,7 @@ impl AgentJobConfig {
         }
         Ok(Self {
             image: std::env::var("INVESTIGATOR_AGENT_IMAGE").unwrap_or_else(|_| {
-                "ghcr.io/arkadiuszspiewak/investigator-agent:latest".to_owned()
+                "ghcr.io/arkadiuszspiewak/investigator-agent-codex:latest".to_owned()
             }),
             service_account_name: std::env::var("INVESTIGATOR_AGENT_SERVICE_ACCOUNT")
                 .unwrap_or_else(|_| "investigator-agent".to_owned()),
@@ -136,7 +136,7 @@ impl AgentJobConfig {
 impl Default for AgentJobConfig {
     fn default() -> Self {
         Self {
-            image: "ghcr.io/arkadiuszspiewak/investigator-agent:latest".to_owned(),
+            image: "ghcr.io/arkadiuszspiewak/investigator-agent-codex:latest".to_owned(),
             service_account_name: "investigator-agent".to_owned(),
             model: "gpt-5.6-terra".to_owned(),
             provider: AgentProvider::OpenAi,
@@ -353,7 +353,7 @@ fn pod_result(pod: &Pod) -> Option<String> {
         .container_statuses
         .as_ref()?
         .iter()
-        .find(|status| status.name == "codex")?
+        .find(|status| status.name == "agent")?
         .state
         .as_ref()?
         .terminated
@@ -395,7 +395,7 @@ fn agent_job(
             value: Some("openai".to_owned()),
             ..Default::default()
         }),
-        AgentProvider::Bedrock { region, .. } => {
+        AgentProvider::Bedrock { region, project_id } => {
             auth_env.push(EnvVar {
                 name: "INVESTIGATOR_AGENT_PROVIDER".to_owned(),
                 value: Some("bedrock".to_owned()),
@@ -404,6 +404,16 @@ fn agent_job(
             auth_env.push(EnvVar {
                 name: "AWS_REGION".to_owned(),
                 value: Some(region.clone()),
+                ..Default::default()
+            });
+            auth_env.push(EnvVar {
+                name: "BEDROCK_BASE_URL".to_owned(),
+                value: Some(format!("https://bedrock-mantle.{region}.api.aws/v1")),
+                ..Default::default()
+            });
+            auth_env.push(EnvVar {
+                name: "BEDROCK_PROJECT_ID".to_owned(),
+                value: Some(project_id.clone()),
                 ..Default::default()
             });
         }
@@ -436,9 +446,9 @@ fn agent_job(
                     tolerations: (!config.tolerations.is_empty())
                         .then(|| config.tolerations.clone()),
                     containers: vec![Container {
-                        name: "codex".to_owned(),
+                        name: "agent".to_owned(),
                         image: Some(config.image.clone()),
-                        args: Some(codex_args(config, prompt)),
+                        args: Some(agent_args(config, prompt)),
                         env: Some({
                             let mut env = vec![EnvVar {
                                 name: "INVESTIGATOR_MCP_SERVERS".to_owned(),
@@ -462,7 +472,10 @@ fn agent_job(
     })
 }
 
-fn codex_args(config: &AgentJobConfig, prompt: String) -> Vec<String> {
+fn agent_args(config: &AgentJobConfig, prompt: String) -> Vec<String> {
+    if matches!(config.provider, AgentProvider::Bedrock { .. }) {
+        return vec![prompt];
+    }
     let mut args = vec![
         "exec".to_owned(),
         "--approve-for-me".to_owned(),
@@ -472,39 +485,6 @@ fn codex_args(config: &AgentJobConfig, prompt: String) -> Vec<String> {
         "--model".to_owned(),
         config.model.clone(),
     ];
-    if let AgentProvider::Bedrock { region, project_id } = &config.provider {
-        args.extend([
-            "-c".to_owned(),
-            "model_provider=\"amazon-bedrock\"".to_owned(),
-            "-c".to_owned(),
-            format!(
-                "model_providers.amazon-bedrock.base_url=\"https://bedrock-mantle.{region}.api.aws/v1\""
-            ),
-            "-c".to_owned(),
-            format!("model_providers.amazon-bedrock.http_headers={{\"OpenAI-Project\"=\"{project_id}\"}}"),
-        ]);
-        match &config.auth {
-            AgentAuth::ApiKey { .. } => args.extend([
-                "-c".to_owned(),
-                "model_providers.amazon-bedrock.auth.command=\"/usr/bin/printenv\"".to_owned(),
-                "-c".to_owned(),
-                "model_providers.amazon-bedrock.auth.args=[\"BEDROCK_API_KEY\"]".to_owned(),
-                "-c".to_owned(),
-                "model_providers.amazon-bedrock.auth.refresh_interval_ms=0".to_owned(),
-            ]),
-            AgentAuth::WorkloadIdentity => args.extend([
-                "-c".to_owned(),
-                "model_providers.amazon-bedrock.auth.command=\"node\"".to_owned(),
-                "-c".to_owned(),
-                "model_providers.amazon-bedrock.auth.args=[\"/opt/investigator/bedrock-token.mjs\"]".to_owned(),
-                "-c".to_owned(),
-                "model_providers.amazon-bedrock.auth.refresh_interval_ms=300000".to_owned(),
-                "-c".to_owned(),
-                "model_providers.amazon-bedrock.auth.timeout_ms=10000".to_owned(),
-            ]),
-            AgentAuth::AuthJson { .. } => unreachable!("Bedrock auth.json is rejected at startup"),
-        }
-    }
     args.push(prompt);
     args
 }
@@ -662,7 +642,7 @@ mod tests {
     }
 
     #[test]
-    fn bedrock_workload_identity_configures_token_generation_and_provider() {
+    fn bedrock_workload_identity_uses_native_agent_prompt_contract() {
         let config = AgentJobConfig {
             provider: AgentProvider::Bedrock {
                 region: "us-east-1".into(),
@@ -675,33 +655,11 @@ mod tests {
         let (env, init, _, _) = agent_auth(&config, "agent:test").unwrap();
         assert!(init.is_none());
         assert!(env.is_empty());
-        let args = codex_args(&config, "investigate".into());
-        assert!(
-            args.iter()
-                .any(|arg| arg == "model_provider=\"amazon-bedrock\"")
-        );
-        assert!(args.iter().any(|arg| {
-            arg == "model_providers.amazon-bedrock.base_url=\"https://bedrock-mantle.us-east-1.api.aws/v1\""
-        }));
-        assert!(args.iter().any(|arg| {
-            arg == "model_providers.amazon-bedrock.http_headers={\"OpenAI-Project\"=\"proj_investigator\"}"
-        }));
-        assert!(
-            args.iter()
-                .any(|arg| { arg == "model_providers.amazon-bedrock.auth.command=\"node\"" })
-        );
-        assert!(args.iter().any(|arg| {
-            arg == "model_providers.amazon-bedrock.auth.args=[\"/opt/investigator/bedrock-token.mjs\"]"
-        }));
-        assert!(
-            !args
-                .iter()
-                .any(|arg| arg.contains("model_providers.bedrock"))
-        );
+        assert_eq!(agent_args(&config, "investigate".into()), ["investigate"]);
     }
 
     #[test]
-    fn bedrock_api_key_uses_native_provider_and_secret_backed_token_command() {
+    fn bedrock_api_key_uses_secret_and_native_agent_prompt_contract() {
         let config = AgentJobConfig {
             provider: AgentProvider::Bedrock {
                 region: "eu-central-1".into(),
@@ -717,18 +675,61 @@ mod tests {
         let (env, init, _, _) = agent_auth(&config, "agent:test").unwrap();
         assert!(init.is_none());
         assert_eq!(env[0].name, "BEDROCK_API_KEY");
-        let args = codex_args(&config, "investigate".into());
-        assert!(args.iter().any(|arg| {
-            arg == "model_providers.amazon-bedrock.auth.command=\"/usr/bin/printenv\""
-        }));
-        assert!(args.iter().any(|arg| {
-            arg == "model_providers.amazon-bedrock.auth.args=[\"BEDROCK_API_KEY\"]"
-        }));
-        assert!(
-            !args
-                .iter()
-                .any(|arg| arg.contains("model_providers.bedrock"))
+        assert_eq!(agent_args(&config, "investigate".into()), ["investigate"]);
+    }
+
+    #[test]
+    fn bedrock_job_receives_native_runtime_configuration() {
+        let mut investigation = Investigation::new(
+            "test",
+            InvestigationSpec {
+                query: "investigate".to_owned(),
+                questions: vec![],
+            },
         );
+        investigation.metadata.uid = Some("test-uid".to_owned());
+        let config = AgentJobConfig {
+            image: "bedrock-agent:test".to_owned(),
+            provider: AgentProvider::Bedrock {
+                region: "eu-central-1".into(),
+                project_id: "proj_investigator".into(),
+            },
+            model: "qwen.qwen3-coder-next".into(),
+            auth: AgentAuth::WorkloadIdentity,
+            ..AgentJobConfig::default()
+        };
+
+        let pod = agent_job(
+            &investigation,
+            "test-agent".to_owned(),
+            "investigate".to_owned(),
+            &config,
+        )
+        .unwrap()
+        .spec
+        .unwrap()
+        .template
+        .spec
+        .unwrap();
+        let container = &pod.containers[0];
+        let env = container.env.as_ref().unwrap();
+        let value = |name: &str| {
+            env.iter()
+                .find(|item| item.name == name)
+                .and_then(|item| item.value.as_deref())
+        };
+
+        assert_eq!(container.name, "agent");
+        assert_eq!(
+            container.args.as_deref(),
+            Some(["investigate".to_owned()].as_slice())
+        );
+        assert_eq!(value("AWS_REGION"), Some("eu-central-1"));
+        assert_eq!(
+            value("BEDROCK_BASE_URL"),
+            Some("https://bedrock-mantle.eu-central-1.api.aws/v1")
+        );
+        assert_eq!(value("BEDROCK_PROJECT_ID"), Some("proj_investigator"));
     }
 
     #[test]
@@ -851,15 +852,15 @@ mod tests {
     }
 
     #[test]
-    fn pod_result_reads_codex_termination_message() {
+    fn pod_result_reads_agent_termination_message() {
         let pod: Pod = serde_json::from_value(json!({
             "apiVersion": "v1",
             "kind": "Pod",
             "metadata": {"name": "test-agent"},
-            "spec": {"containers": [{"name": "codex", "image": "agent:test"}]},
+            "spec": {"containers": [{"name": "agent", "image": "agent:test"}]},
             "status": {
                 "containerStatuses": [{
-                    "name": "codex",
+                    "name": "agent",
                     "image": "agent:test",
                     "imageID": "agent:test",
                     "ready": false,

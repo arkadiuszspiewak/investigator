@@ -63,8 +63,11 @@ jobs:
               apps/investigator-alerts)
                 workflow="build-investigator-alerts.yml"
                 ;;
-              docker)
-                workflow="build-agent.yml"
+              agents/codex)
+                workflow="build-agent-codex.yml"
+                ;;
+              agents/bedrock)
+                workflow="build-agent-bedrock.yml"
                 ;;
               servers/kubernetes-mcp)
                 workflow="build-kubernetes-mcp.yml"

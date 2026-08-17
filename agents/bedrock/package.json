@@ -1,0 +1,10 @@
+{
+  "name": "investigator-agent-bedrock",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@aws/bedrock-token-generator": "1.1.0",
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "openai": "7.5.0"
+  }
+}

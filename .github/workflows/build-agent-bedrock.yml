@@ -1,0 +1,27 @@
+name: Build investigator-agent-bedrock
+
+on:
+  pull_request:
+    paths:
+      - agents/bedrock/**
+      - .github/workflows/_build-agent.yml
+      - .github/workflows/build-agent-bedrock.yml
+  push:
+    branches: [main]
+    tags: [agent-bedrock-v*]
+    paths:
+      - agents/bedrock/**
+      - .github/workflows/_build-agent.yml
+      - .github/workflows/build-agent-bedrock.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    uses: ./.github/workflows/_build-agent.yml
+    with:
+      agent: bedrock
+    secrets: inherit

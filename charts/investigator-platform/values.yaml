@@ -35,10 +35,11 @@ investigator:
   rbac:
     create: true
 
-# Global configuration for every short-lived Codex agent Job.
+# Global configuration for every short-lived agent Job. Select the runtime image
+# once per cluster; Investigation resources cannot override it.
 agent:
   image:
-    repository: ghcr.io/arkadiuszspiewak/investigator-agent
+    repository: ghcr.io/arkadiuszspiewak/investigator-agent-codex
     tag: latest
     digest: ""
   provider: {type: openai, model: gpt-5.6-terra, region: "", projectId: ""}

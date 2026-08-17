@@ -27,15 +27,17 @@
       "package-name": "investigator-alerts",
       "release-type": "rust"
     },
-    "docker": {
-      "component": "agent",
-      "package-name": "investigator-agent",
+    "agents/codex": {
+      "component": "agent-codex",
+      "package-name": "investigator-agent-codex",
       "release-type": "simple",
-      "initial-version": "0.1.0",
-      "exclude-paths": [
-        "Dockerfile.app",
-        "Dockerfile.server"
-      ]
+      "initial-version": "0.1.0"
+    },
+    "agents/bedrock": {
+      "component": "agent-bedrock",
+      "package-name": "investigator-agent-bedrock",
+      "release-type": "simple",
+      "initial-version": "0.1.0"
     },
     "servers/kubernetes-mcp": {
       "component": "kubernetes-mcp",

@@ -36,12 +36,13 @@ cargo run -p investigator-cli -- --help
 cargo run -p investigator-alerts -- --help
 ```
 
-Build the controller, agent, or server image from the repository root:
+Build the controller, an agent runtime, or a server image from the repository root:
 
 ```sh
 docker build -f docker/Dockerfile.app --build-arg PACKAGE=investigator \
   --build-arg BINARY=investigator -t investigator:dev .
-docker build -f docker/Dockerfile.agent -t investigator-agent:dev .
+docker build -f agents/codex/Dockerfile -t investigator-agent-codex:dev .
+docker build -f agents/bedrock/Dockerfile -t investigator-agent-bedrock:dev .
 docker build -f docker/Dockerfile.server \
   --build-arg PACKAGE=kubernetes-mcp --build-arg BINARY=kubernetes-mcp \
   -t kubernetes-mcp:dev .
@@ -199,13 +200,16 @@ kubectl -n investigations create secret generic openai-api-key \
 Configure `agent.provider`, `agent.auth`, and `agent.serviceAccount`. Supported
 modes are OpenAI with `apiKey` or `authJson`, and Bedrock with `apiKey` or
 `workloadIdentity`. Workload identity uses EKS Pod Identity or IRSA credentials
-to generate region-bound, short-lived Bedrock bearer tokens. Codex uses its
-native `amazon-bedrock` provider and refreshes the token during long-running Jobs.
+to generate region-bound, short-lived Bedrock bearer tokens. The OpenAI image
+runs official Codex. The Bedrock image runs a separate Responses API agent,
+refreshes its token before each model request, and exposes the configured MCP
+servers as standard function tools supported by Bedrock Mantle.
 
 For Bedrock with a stored API key:
 
 ```yaml
 agent:
+  image: {repository: ghcr.io/arkadiuszspiewak/investigator-agent-bedrock, tag: latest, digest: ""}
   provider: {type: bedrock, model: qwen.qwen3-coder-next, region: eu-central-1, projectId: proj_example}
   auth:
     type: apiKey
@@ -216,6 +220,7 @@ For Bedrock with EKS Pod Identity or IRSA:
 
 ```yaml
 agent:
+  image: {repository: ghcr.io/arkadiuszspiewak/investigator-agent-bedrock, tag: latest, digest: ""}
   provider: {type: bedrock, model: qwen.qwen3-coder-next, region: eu-central-1, projectId: proj_example}
   auth: {type: workloadIdentity}
   serviceAccount:
@@ -266,12 +271,15 @@ See [Alertmanager MCP server](docs/alertmanager-mcp.md) for alert investigation 
 helm upgrade --install investigator charts/investigator-platform \
   --namespace investigations --create-namespace \
   --set investigator.image.repository=ghcr.io/my-org/investigator \
+  --set agent.image.repository=ghcr.io/my-org/investigator-agent-codex \
   --set agent.image.tag=0.1.0 \
   --set mcpServers.kubernetes.image.repository=ghcr.io/my-org/kubernetes-mcp
 ```
 
-`agent.image` configures the Codex agent image used by every
-Investigation Job. Individual Investigation resources cannot override it.
+`agent.image` selects the agent runtime used by every Investigation Job in the
+cluster. Use `investigator-agent-codex` for native OpenAI deployments and
+`investigator-agent-bedrock` for AWS deployments. Individual Investigation
+resources cannot override it.
 
 Each provider has dedicated configuration under `mcpServers.<provider>`. Copy
 an entry and set `enabled: true` to add one without changing templates. Server
@@ -285,7 +293,7 @@ do not accept MCP endpoints, preventing clients from injecting or omitting
 servers.
 
 Release Please manages independent versions and GitHub Releases for every app,
-server, the agent, and the chart. Commits on `main` must use Conventional Commit
+server, agent runtime, and the chart. Commits on `main` must use Conventional Commit
 prefixes: `fix:` creates a patch release, `feat:` creates a minor release, and a
 type followed by `!` (for example, `feat!:`) creates a major release. Commits
 without a release-bearing prefix do not increment a version.

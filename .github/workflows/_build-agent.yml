@@ -1,25 +1,12 @@
-name: Build investigator-agent
+name: Build agent image
 
 on:
-  pull_request:
-    paths:
-      - docker/Dockerfile.agent
-      - docker/agent-entrypoint.sh
-      - docker/agent/AGENTS.md
-      - .github/workflows/build-agent.yml
-  push:
-    branches: [main]
-    tags: [agent-v*]
-    paths:
-      - docker/Dockerfile.agent
-      - docker/agent-entrypoint.sh
-      - docker/agent/AGENTS.md
-      - .github/workflows/build-agent.yml
-  workflow_dispatch:
-
-permissions:
-  contents: read
-  packages: write
+  workflow_call:
+    inputs:
+      agent:
+        description: Agent directory and image suffix
+        required: true
+        type: string
 
 jobs:
   image:
@@ -37,20 +24,20 @@ jobs:
       - id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository_owner }}/investigator-agent
+          images: ghcr.io/${{ github.repository_owner }}/investigator-agent-${{ inputs.agent }}
           tags: |
             type=sha,prefix=sha-
             type=ref,event=branch
-            type=semver,pattern={{version}},match=^agent-v(.*)$
+            type=semver,pattern={{version}},match=^agent-${{ inputs.agent }}-v(.*)$
             type=ref,event=pr
             type=raw,value=latest,enable={{is_default_branch}}
       - uses: docker/build-push-action@v6
         with:
           context: .
-          file: docker/Dockerfile.agent
+          file: agents/${{ inputs.agent }}/Dockerfile
           platforms: linux/amd64
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=investigator-agent
-          cache-to: type=gha,mode=max,scope=investigator-agent
+          cache-from: type=gha,scope=investigator-agent-${{ inputs.agent }}
+          cache-to: type=gha,mode=max,scope=investigator-agent-${{ inputs.agent }}
