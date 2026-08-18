@@ -1,5 +1,7 @@
 # Changelog
 
+## [0.3.4](https://github.com/arkadiuszspiewak/investigator/compare/investigator-cli-v0.3.3...investigator-cli-v0.3.4) (2026-08-18)
+
 ## [0.3.3](https://github.com/arkadiuszspiewak/investigator/compare/investigator-cli-v0.3.2...investigator-cli-v0.3.3) (2026-08-17)
 
 ## [0.3.2](https://github.com/arkadiuszspiewak/investigator/compare/investigator-cli-v0.3.1...investigator-cli-v0.3.2) (2026-08-17)

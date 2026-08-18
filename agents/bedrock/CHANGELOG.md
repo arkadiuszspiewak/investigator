@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/arkadiuszspiewak/investigator/compare/agent-bedrock-v1.0.0...agent-bedrock-v1.1.0) (2026-08-18)
+
+
+### Features
+
+* clean up diffrent run modes ([d7a01b5](https://github.com/arkadiuszspiewak/investigator/commit/d7a01b50c809bcea0986a63610c2dc69e65d3abc))
+
 ## [1.0.0](https://github.com/arkadiuszspiewak/investigator/compare/agent-bedrock-v0.1.0...agent-bedrock-v1.0.0) (2026-08-17)
 
 
