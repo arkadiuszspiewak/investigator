@@ -38,11 +38,14 @@ investigator:
 # Global configuration for every short-lived agent Job. Select the runtime image
 # once per cluster; Investigation resources cannot override it.
 agent:
+  # Runtime controls how the controller starts the selected image. It does not
+  # select or infer the image repository.
+  runtime: codex
   image:
     repository: ghcr.io/arkadiuszspiewak/investigator-agent-codex
-    tag: latest
+    tag: "0.1.0"
     digest: ""
-  provider: {type: openai, model: gpt-5.6-terra, region: "", projectId: ""}
+  provider: {type: openai, model: gpt-5.6-terra, api: "", region: "", projectId: ""}
   auth:
     # apiKey, authJson, or workloadIdentity (Bedrock only).
     type: apiKey

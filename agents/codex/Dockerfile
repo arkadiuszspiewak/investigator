@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 FROM node:22-bookworm-slim
 
-ARG CODEX_VERSION=latest
+ARG CODEX_VERSION=0.147.0
 RUN npm install --global "@openai/codex@${CODEX_VERSION}" \
     && apt-get update \
     && apt-get install --yes --no-install-recommends jq ca-certificates \

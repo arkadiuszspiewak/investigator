@@ -24,7 +24,40 @@ use investigator::crd::{Investigation, InvestigationAnswer, InvestigationStatus}
 #[derive(Clone, Debug, PartialEq)]
 enum AgentProvider {
     OpenAi,
-    Bedrock { region: String, project_id: String },
+    Bedrock {
+        region: String,
+        project_id: String,
+        api: Option<BedrockApi>,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum AgentRuntime {
+    Codex,
+    Bedrock,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum BedrockApi {
+    Responses,
+    ChatCompletions,
+}
+
+impl BedrockApi {
+    fn parse(value: &str) -> Result<Self, String> {
+        match value {
+            "responses" => Ok(Self::Responses),
+            "chatCompletions" => Ok(Self::ChatCompletions),
+            _ => Err(format!("unsupported Bedrock agent API: {value}")),
+        }
+    }
+
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::Responses => "responses",
+            Self::ChatCompletions => "chatCompletions",
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -56,6 +89,7 @@ struct Context {
 #[derive(Clone, Debug)]
 pub struct AgentJobConfig {
     image: String,
+    runtime: AgentRuntime,
     service_account_name: String,
     model: String,
     provider: AgentProvider,
@@ -68,13 +102,24 @@ pub struct AgentJobConfig {
 
 impl AgentJobConfig {
     pub fn from_env() -> Result<Self, String> {
+        let runtime_name = required_env("INVESTIGATOR_AGENT_RUNTIME")?;
+        let runtime = match runtime_name.as_str() {
+            "codex" => AgentRuntime::Codex,
+            "bedrock" => AgentRuntime::Bedrock,
+            _ => return Err(format!("unsupported agent runtime: {runtime_name}")),
+        };
         let provider_name =
             std::env::var("INVESTIGATOR_AGENT_PROVIDER").unwrap_or_else(|_| "openai".to_owned());
+        let model = required_env("INVESTIGATOR_AGENT_MODEL")?;
         let provider = match provider_name.as_str() {
             "openai" => AgentProvider::OpenAi,
             "bedrock" => AgentProvider::Bedrock {
                 region: required_env("INVESTIGATOR_AGENT_REGION")?,
                 project_id: required_project_id()?,
+                api: std::env::var("INVESTIGATOR_AGENT_API")
+                    .ok()
+                    .map(|value| BedrockApi::parse(&value))
+                    .transpose()?,
             },
             _ => return Err(format!("unsupported agent provider: {provider_name}")),
         };
@@ -101,13 +146,34 @@ impl AgentJobConfig {
             }
             _ => {}
         }
+        match (&runtime, &provider) {
+            (AgentRuntime::Bedrock, AgentProvider::OpenAi) => {
+                return Err("the bedrock runtime only supports the bedrock provider".to_owned());
+            }
+            (AgentRuntime::Bedrock, AgentProvider::Bedrock { api: None, .. }) => {
+                return Err("INVESTIGATOR_AGENT_API is required for the bedrock runtime".to_owned());
+            }
+            (AgentRuntime::Codex, AgentProvider::Bedrock { api: Some(_), .. }) => {
+                return Err(
+                    "INVESTIGATOR_AGENT_API must not be set for the codex runtime".to_owned(),
+                );
+            }
+            (AgentRuntime::Codex, AgentProvider::Bedrock { .. })
+                if !model.starts_with("openai.") =>
+            {
+                return Err(
+                    "the codex runtime only supports Bedrock OpenAI model IDs beginning with openai."
+                        .to_owned(),
+                );
+            }
+            _ => {}
+        }
         Ok(Self {
-            image: std::env::var("INVESTIGATOR_AGENT_IMAGE").unwrap_or_else(|_| {
-                "ghcr.io/arkadiuszspiewak/investigator-agent-codex:latest".to_owned()
-            }),
+            image: required_agent_image()?,
+            runtime,
             service_account_name: std::env::var("INVESTIGATOR_AGENT_SERVICE_ACCOUNT")
                 .unwrap_or_else(|_| "investigator-agent".to_owned()),
-            model: required_env("INVESTIGATOR_AGENT_MODEL")?,
+            model,
             provider,
             auth,
             mcp_servers: serde_json::from_str(
@@ -136,7 +202,8 @@ impl AgentJobConfig {
 impl Default for AgentJobConfig {
     fn default() -> Self {
         Self {
-            image: "ghcr.io/arkadiuszspiewak/investigator-agent-codex:latest".to_owned(),
+            image: "agent:test".to_owned(),
+            runtime: AgentRuntime::Codex,
             service_account_name: "investigator-agent".to_owned(),
             model: "gpt-5.6-terra".to_owned(),
             provider: AgentProvider::OpenAi,
@@ -154,6 +221,16 @@ impl Default for AgentJobConfig {
 
 fn required_env(name: &str) -> Result<String, String> {
     std::env::var(name).map_err(|_| format!("missing required environment variable {name}"))
+}
+
+fn required_agent_image() -> Result<String, String> {
+    let image = required_env("INVESTIGATOR_AGENT_IMAGE")?;
+    if image.ends_with(":latest") {
+        return Err(
+            "INVESTIGATOR_AGENT_IMAGE must use an immutable version tag or digest".to_owned(),
+        );
+    }
+    Ok(image)
 }
 
 fn required_project_id() -> Result<String, String> {
@@ -389,13 +466,28 @@ fn agent_job(
         value: Some(config.model.clone()),
         ..Default::default()
     });
+    auth_env.push(EnvVar {
+        name: "INVESTIGATOR_AGENT_RUNTIME".to_owned(),
+        value: Some(
+            match config.runtime {
+                AgentRuntime::Codex => "codex",
+                AgentRuntime::Bedrock => "bedrock",
+            }
+            .to_owned(),
+        ),
+        ..Default::default()
+    });
     match &config.provider {
         AgentProvider::OpenAi => auth_env.push(EnvVar {
             name: "INVESTIGATOR_AGENT_PROVIDER".to_owned(),
             value: Some("openai".to_owned()),
             ..Default::default()
         }),
-        AgentProvider::Bedrock { region, project_id } => {
+        AgentProvider::Bedrock {
+            region,
+            project_id,
+            api,
+        } => {
             auth_env.push(EnvVar {
                 name: "INVESTIGATOR_AGENT_PROVIDER".to_owned(),
                 value: Some("bedrock".to_owned()),
@@ -408,9 +500,22 @@ fn agent_job(
             });
             auth_env.push(EnvVar {
                 name: "BEDROCK_BASE_URL".to_owned(),
-                value: Some(format!("https://bedrock-mantle.{region}.api.aws/v1")),
+                value: Some(format!(
+                    "https://bedrock-mantle.{region}.api.aws{}",
+                    match config.runtime {
+                        AgentRuntime::Codex => "/openai/v1",
+                        AgentRuntime::Bedrock => "/v1",
+                    }
+                )),
                 ..Default::default()
             });
+            if let Some(api) = api {
+                auth_env.push(EnvVar {
+                    name: "BEDROCK_API".to_owned(),
+                    value: Some(api.as_str().to_owned()),
+                    ..Default::default()
+                });
+            }
             auth_env.push(EnvVar {
                 name: "BEDROCK_PROJECT_ID".to_owned(),
                 value: Some(project_id.clone()),
@@ -473,7 +578,7 @@ fn agent_job(
 }
 
 fn agent_args(config: &AgentJobConfig, prompt: String) -> Vec<String> {
-    if matches!(config.provider, AgentProvider::Bedrock { .. }) {
+    if config.runtime == AgentRuntime::Bedrock {
         return vec![prompt];
     }
     let mut args = vec![
@@ -485,6 +590,36 @@ fn agent_args(config: &AgentJobConfig, prompt: String) -> Vec<String> {
         "--model".to_owned(),
         config.model.clone(),
     ];
+    if let AgentProvider::Bedrock {
+        region, project_id, ..
+    } = &config.provider
+    {
+        args.extend([
+            "-c".to_owned(),
+            "model_provider=\"amazon-bedrock\"".to_owned(),
+            "-c".to_owned(),
+            format!(
+                "model_providers.amazon-bedrock.base_url=\"https://bedrock-mantle.{region}.api.aws/openai/v1\""
+            ),
+            "-c".to_owned(),
+            format!("model_providers.amazon-bedrock.http_headers={{\"OpenAI-Project\"=\"{project_id}\"}}"),
+        ]);
+        match &config.auth {
+            AgentAuth::ApiKey { .. } => args.extend([
+                "-c".to_owned(),
+                "model_providers.amazon-bedrock.auth.command=\"/usr/bin/printenv\"".to_owned(),
+                "-c".to_owned(),
+                "model_providers.amazon-bedrock.auth.args=[\"BEDROCK_API_KEY\"]".to_owned(),
+                "-c".to_owned(),
+                "model_providers.amazon-bedrock.auth.refresh_interval_ms=0".to_owned(),
+            ]),
+            AgentAuth::WorkloadIdentity => args.extend([
+                "-c".to_owned(),
+                format!("model_providers.amazon-bedrock.aws.region=\"{region}\""),
+            ]),
+            AgentAuth::AuthJson { .. } => unreachable!("Bedrock auth.json is rejected at startup"),
+        }
+    }
     args.push(prompt);
     args
 }
@@ -510,32 +645,39 @@ fn agent_auth(
         mount_path: "/home/codex/.codex".to_owned(),
         ..Default::default()
     };
+    let codex_home_resources = || match config.runtime {
+        AgentRuntime::Codex => (vec![codex_home.clone()], vec![codex_home_mount.clone()]),
+        AgentRuntime::Bedrock => (vec![], vec![]),
+    };
 
     match &config.auth {
         AgentAuth::ApiKey {
             secret_name,
             secret_key,
-        } => Ok((
-            vec![EnvVar {
-                name: match config.provider {
-                    AgentProvider::OpenAi => "OPENAI_API_KEY",
-                    AgentProvider::Bedrock { .. } => "BEDROCK_API_KEY",
-                }
-                .to_owned(),
-                value_from: Some(EnvVarSource {
-                    secret_key_ref: Some(SecretKeySelector {
-                        name: secret_name.clone(),
-                        key: secret_key.clone(),
+        } => {
+            let (volumes, mounts) = codex_home_resources();
+            Ok((
+                vec![EnvVar {
+                    name: match config.provider {
+                        AgentProvider::OpenAi => "OPENAI_API_KEY",
+                        AgentProvider::Bedrock { .. } => "BEDROCK_API_KEY",
+                    }
+                    .to_owned(),
+                    value_from: Some(EnvVarSource {
+                        secret_key_ref: Some(SecretKeySelector {
+                            name: secret_name.clone(),
+                            key: secret_key.clone(),
+                            ..Default::default()
+                        }),
                         ..Default::default()
                     }),
                     ..Default::default()
-                }),
-                ..Default::default()
-            }],
-            None,
-            vec![codex_home],
-            vec![codex_home_mount],
-        )),
+                }],
+                None,
+                volumes,
+                mounts,
+            ))
+        }
         AgentAuth::AuthJson {
             secret_name,
             secret_key,
@@ -583,7 +725,10 @@ fn agent_auth(
                 vec![codex_home_mount],
             ))
         }
-        AgentAuth::WorkloadIdentity => Ok((vec![], None, vec![codex_home], vec![codex_home_mount])),
+        AgentAuth::WorkloadIdentity => {
+            let (volumes, mounts) = codex_home_resources();
+            Ok((vec![], None, volumes, mounts))
+        }
     }
 }
 
@@ -642,11 +787,12 @@ mod tests {
     }
 
     #[test]
-    fn bedrock_workload_identity_uses_native_agent_prompt_contract() {
+    fn codex_bedrock_workload_identity_uses_codex_contract() {
         let config = AgentJobConfig {
             provider: AgentProvider::Bedrock {
                 region: "us-east-1".into(),
                 project_id: "proj_investigator".into(),
+                api: None,
             },
             model: "openai.gpt-5.6-terra".into(),
             auth: AgentAuth::WorkloadIdentity,
@@ -655,7 +801,18 @@ mod tests {
         let (env, init, _, _) = agent_auth(&config, "agent:test").unwrap();
         assert!(init.is_none());
         assert!(env.is_empty());
-        assert_eq!(agent_args(&config, "investigate".into()), ["investigate"]);
+        let args = agent_args(&config, "investigate".into());
+        assert!(
+            args.iter()
+                .any(|arg| arg == "model_provider=\"amazon-bedrock\"")
+        );
+        assert!(args.iter().any(|arg| {
+            arg == "model_providers.amazon-bedrock.base_url=\"https://bedrock-mantle.us-east-1.api.aws/openai/v1\""
+        }));
+        assert!(
+            args.iter()
+                .any(|arg| { arg == "model_providers.amazon-bedrock.aws.region=\"us-east-1\"" })
+        );
     }
 
     #[test]
@@ -664,7 +821,9 @@ mod tests {
             provider: AgentProvider::Bedrock {
                 region: "eu-central-1".into(),
                 project_id: "proj_investigator".into(),
+                api: Some(BedrockApi::Responses),
             },
+            runtime: AgentRuntime::Bedrock,
             model: "openai.gpt-oss-120b".into(),
             auth: AgentAuth::ApiKey {
                 secret_name: "bedrock-api-key".into(),
@@ -672,9 +831,11 @@ mod tests {
             },
             ..AgentJobConfig::default()
         };
-        let (env, init, _, _) = agent_auth(&config, "agent:test").unwrap();
+        let (env, init, volumes, mounts) = agent_auth(&config, "agent:test").unwrap();
         assert!(init.is_none());
         assert_eq!(env[0].name, "BEDROCK_API_KEY");
+        assert!(volumes.is_empty());
+        assert!(mounts.is_empty());
         assert_eq!(agent_args(&config, "investigate".into()), ["investigate"]);
     }
 
@@ -693,7 +854,9 @@ mod tests {
             provider: AgentProvider::Bedrock {
                 region: "eu-central-1".into(),
                 project_id: "proj_investigator".into(),
+                api: Some(BedrockApi::ChatCompletions),
             },
+            runtime: AgentRuntime::Bedrock,
             model: "qwen.qwen3-coder-next".into(),
             auth: AgentAuth::WorkloadIdentity,
             ..AgentJobConfig::default()
@@ -730,6 +893,8 @@ mod tests {
             Some("https://bedrock-mantle.eu-central-1.api.aws/v1")
         );
         assert_eq!(value("BEDROCK_PROJECT_ID"), Some("proj_investigator"));
+        assert_eq!(value("BEDROCK_API"), Some("chatCompletions"));
+        assert_eq!(value("INVESTIGATOR_AGENT_RUNTIME"), Some("bedrock"));
     }
 
     #[test]
@@ -744,6 +909,7 @@ mod tests {
         investigation.metadata.uid = Some("test-uid".to_owned());
         let config = AgentJobConfig {
             image: "agent:test".to_owned(),
+            runtime: AgentRuntime::Codex,
             service_account_name: "agent".to_owned(),
             model: "gpt-test".to_owned(),
             provider: AgentProvider::OpenAi,

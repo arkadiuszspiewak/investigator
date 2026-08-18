@@ -8,6 +8,7 @@
 {{- $mcpServers = append $mcpServers (dict "name" $name "url" $url) -}}
 {{- end -}}
 {{- end -}}
+{{- include "investigator-platform.validateAgent" . -}}
 {{- if .Values.investigator.enabled }}
 apiVersion: apps/v1
 kind: Deployment
@@ -51,7 +52,9 @@ spec:
             {{- toYaml .Values.investigator.securityContext | nindent 12 }}
           env:
             - name: INVESTIGATOR_AGENT_IMAGE
-              value: {{ include "investigator-platform.image" (dict "root" . "image" .Values.agent.image) | quote }}
+              value: {{ include "investigator-platform.agentImage" . | quote }}
+            - name: INVESTIGATOR_AGENT_RUNTIME
+              value: {{ .Values.agent.runtime | quote }}
             - name: INVESTIGATOR_AGENT_SERVICE_ACCOUNT
               value: {{ include "investigator-platform.agentServiceAccount" . | quote }}
             - name: INVESTIGATOR_AGENT_PROVIDER
@@ -61,6 +64,10 @@ spec:
             - name: INVESTIGATOR_AGENT_AUTH_TYPE
               value: {{ .Values.agent.auth.type | quote }}
             {{- if eq .Values.agent.provider.type "bedrock" }}
+            {{- if eq .Values.agent.runtime "bedrock" }}
+            - name: INVESTIGATOR_AGENT_API
+              value: {{ .Values.agent.provider.api | quote }}
+            {{- end }}
             - name: INVESTIGATOR_AGENT_REGION
               value: {{ required "agent.provider.region is required for Bedrock" .Values.agent.provider.region | quote }}
             - name: INVESTIGATOR_AGENT_PROJECT_ID

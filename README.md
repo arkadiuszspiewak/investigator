@@ -182,11 +182,11 @@ CRD or controller.
 1. Install `charts/investigator-platform`; it contains the Investigation CRD,
    controller, and enabled MCP server Deployments and Services.
 2. Create an Investigation like `deploy/examples/investigation.yaml`.
-3. The controller creates an owned Job running `codex exec --full-auto <query>`.
+3. The controller creates an owned Job using the globally configured agent runtime.
 4. Helm builds the controller-owned MCP registry from only the enabled
    `mcpServers` entries. Investigation resources and clients cannot override it.
-5. The agent receives those endpoints as `INVESTIGATOR_MCP_SERVERS`;
-   its image translates that JSON into Codex configuration.
+5. The agent receives those endpoints as `INVESTIGATOR_MCP_SERVERS`; its image
+   translates the registry into runtime-specific tool configuration.
 
 Agent provider and authentication are global Helm configuration. Investigation
 resources contain conversation state only. For OpenAI API-key authentication:
@@ -197,20 +197,41 @@ kubectl -n investigations create secret generic openai-api-key \
 
 ```
 
-Configure `agent.provider`, `agent.auth`, and `agent.serviceAccount`. Supported
-modes are OpenAI with `apiKey` or `authJson`, and Bedrock with `apiKey` or
-`workloadIdentity`. Workload identity uses EKS Pod Identity or IRSA credentials
-to generate region-bound, short-lived Bedrock bearer tokens. The OpenAI image
-runs official Codex. The Bedrock image runs a separate Responses API agent,
-refreshes its token before each model request, and exposes the configured MCP
-servers as standard function tools supported by Bedrock Mantle.
+`agent.runtime` defines how the controller starts the selected `agent.image`;
+the image is never inferred from its repository name. `agent.provider.type`
+selects the inference service. Supported combinations are Codex with OpenAI,
+Codex with Bedrock OpenAI models, and the native Bedrock runtime with Bedrock.
+
+Codex with native OpenAI:
+
+```yaml
+agent:
+  runtime: codex
+  image: {repository: ghcr.io/example/investigator-agent-codex, tag: "0.4.1", digest: ""}
+  provider: {type: openai, model: gpt-5.6-terra, api: "", region: "", projectId: ""}
+  auth:
+    type: authJson
+    authJsonSecretRef: {name: codex-auth, key: auth.json}
+```
+
+Codex with a supported OpenAI model on Bedrock uses the dedicated
+`/openai/v1` endpoint and Codex's native `amazon-bedrock` provider:
+
+```yaml
+agent:
+  runtime: codex
+  image: {repository: ghcr.io/example/investigator-agent-codex, tag: "0.4.1", digest: ""}
+  provider: {type: bedrock, model: openai.gpt-5.6-terra, api: "", region: us-east-1, projectId: proj_example}
+  auth: {type: workloadIdentity}
+```
 
 For Bedrock with a stored API key:
 
 ```yaml
 agent:
-  image: {repository: ghcr.io/arkadiuszspiewak/investigator-agent-bedrock, tag: latest, digest: ""}
-  provider: {type: bedrock, model: qwen.qwen3-coder-next, region: eu-central-1, projectId: proj_example}
+  runtime: bedrock
+  image: {repository: ghcr.io/example/investigator-agent-bedrock, tag: "0.2.3", digest: ""}
+  provider: {type: bedrock, model: qwen.qwen3-coder-next, api: chatCompletions, region: eu-central-1, projectId: proj_example}
   auth:
     type: apiKey
     apiKeySecretRef: {name: bedrock-api-key, key: api-key}
@@ -220,8 +241,9 @@ For Bedrock with EKS Pod Identity or IRSA:
 
 ```yaml
 agent:
-  image: {repository: ghcr.io/arkadiuszspiewak/investigator-agent-bedrock, tag: latest, digest: ""}
-  provider: {type: bedrock, model: qwen.qwen3-coder-next, region: eu-central-1, projectId: proj_example}
+  runtime: bedrock
+  image: {repository: ghcr.io/example/investigator-agent-bedrock, tag: "0.2.3", digest: ""}
+  provider: {type: bedrock, model: qwen.qwen3-coder-next, api: chatCompletions, region: eu-central-1, projectId: proj_example}
   auth: {type: workloadIdentity}
   serviceAccount:
     create: true
@@ -276,10 +298,10 @@ helm upgrade --install investigator charts/investigator-platform \
   --set mcpServers.kubernetes.image.repository=ghcr.io/my-org/kubernetes-mcp
 ```
 
-`agent.image` selects the agent runtime used by every Investigation Job in the
-cluster. Use `investigator-agent-codex` for native OpenAI deployments and
-`investigator-agent-bedrock` for AWS deployments. Individual Investigation
-resources cannot override it.
+`agent.runtime` selects the execution contract and `agent.image` selects the
+exact versioned artifact used by every Investigation Job. Exactly one of
+`agent.image.tag` or `agent.image.digest` must be set. Individual Investigation
+resources cannot override either setting.
 
 Each provider has dedicated configuration under `mcpServers.<provider>`. Copy
 an entry and set `enabled: true` to add one without changing templates. Server

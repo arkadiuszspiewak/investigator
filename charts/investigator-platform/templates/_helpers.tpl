@@ -39,6 +39,36 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end -}}
 {{- end -}}
 
+{{- define "investigator-platform.agentImage" -}}
+{{- $repository := required "agent.image.repository is required" .Values.agent.image.repository -}}
+{{- $tag := .Values.agent.image.tag | default "" -}}
+{{- $digest := .Values.agent.image.digest | default "" -}}
+{{- if and $tag $digest -}}{{ fail "exactly one of agent.image.tag or agent.image.digest must be set" }}{{- end -}}
+{{- if not (or $tag $digest) -}}{{ fail "exactly one of agent.image.tag or agent.image.digest must be set" }}{{- end -}}
+{{- if eq $tag "latest" -}}{{ fail "agent.image.tag must be an immutable version, not latest" }}{{- end -}}
+{{- if $digest -}}{{ printf "%s@%s" $repository $digest }}{{- else -}}{{ printf "%s:%s" $repository $tag }}{{- end -}}
+{{- end -}}
+
+{{- define "investigator-platform.validateAgent" -}}
+{{- $runtime := .Values.agent.runtime -}}
+{{- $provider := .Values.agent.provider.type -}}
+{{- $auth := .Values.agent.auth.type -}}
+{{- if not (has $runtime (list "codex" "bedrock")) -}}{{ fail "agent.runtime must be codex or bedrock" }}{{- end -}}
+{{- if not (has $provider (list "openai" "bedrock")) -}}{{ fail "agent.provider.type must be openai or bedrock" }}{{- end -}}
+{{- if and (eq $runtime "bedrock") (ne $provider "bedrock") -}}{{ fail "agent.runtime=bedrock requires agent.provider.type=bedrock" }}{{- end -}}
+{{- if and (eq $provider "openai") (eq $auth "workloadIdentity") -}}{{ fail "workloadIdentity authentication is only supported by Bedrock" }}{{- end -}}
+{{- if and (eq $provider "bedrock") (eq $auth "authJson") -}}{{ fail "authJson authentication is only supported by OpenAI" }}{{- end -}}
+{{- if eq $provider "bedrock" -}}
+{{- $region := required "agent.provider.region is required for Bedrock" .Values.agent.provider.region -}}
+{{- $projectId := required "agent.provider.projectId is required for Bedrock" .Values.agent.provider.projectId -}}
+{{- if eq $runtime "bedrock" -}}
+{{- if not (has .Values.agent.provider.api (list "responses" "chatCompletions")) -}}{{ fail "agent.provider.api must be responses or chatCompletions for the bedrock runtime" }}{{- end -}}
+{{- else if .Values.agent.provider.api -}}{{ fail "agent.provider.api must be empty for the codex runtime" }}
+{{- else if not (hasPrefix "openai." .Values.agent.provider.model) -}}{{ fail "the codex runtime requires a Bedrock OpenAI model ID beginning with openai." }}{{- end -}}
+{{- else if .Values.agent.provider.api -}}{{ fail "agent.provider.api is only supported by the bedrock runtime" }}{{- end -}}
+{{- $image := include "investigator-platform.agentImage" . -}}
+{{- end -}}
+
 {{- define "investigator-platform.controllerServiceAccount" -}}
 {{- if .Values.investigator.serviceAccount.create -}}
 {{- default (printf "%s-controller" (include "investigator-platform.fullname" .)) .Values.investigator.serviceAccount.name | trunc 63 | trimSuffix "-" -}}

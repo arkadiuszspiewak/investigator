@@ -65,13 +65,77 @@ async function apiKey() {
   return getTokenProvider()();
 }
 
-async function createResponse(body) {
-  const client = new OpenAI({
+async function createClient() {
+  return new OpenAI({
     apiKey: await apiKey(),
     baseURL: required("BEDROCK_BASE_URL"),
     defaultHeaders: { "OpenAI-Project": required("BEDROCK_PROJECT_ID") },
   });
-  return client.responses.create(body);
+}
+
+async function callMcp(routes, name, argumentsJson) {
+  const route = routes.get(name);
+  if (!route) throw new Error(`model requested unknown tool ${name}`);
+  const result = await route.client.callTool({
+    name: route.originalName,
+    arguments: JSON.parse(argumentsJson || "{}"),
+  });
+  return JSON.stringify(result.content ?? result);
+}
+
+async function runResponses(model, instructions, prompt, tools, routes) {
+  let response = await (await createClient()).responses.create({
+    model, instructions, input: prompt, tools, store: true,
+  });
+  for (let turn = 0; turn < MAX_TURNS; turn += 1) {
+    const calls = (response.output || []).filter((item) => item.type === "function_call");
+    if (calls.length === 0) return responseText(response);
+    const outputs = await Promise.all(calls.map(async (call) => ({
+      type: "function_call_output",
+      call_id: call.call_id,
+      output: await callMcp(routes, call.name, call.arguments),
+    })));
+    response = await (await createClient()).responses.create({
+      model,
+      instructions,
+      previous_response_id: response.id,
+      input: outputs,
+      tools,
+      store: true,
+    });
+  }
+  throw new Error(`agent exceeded ${MAX_TURNS} model turns`);
+}
+
+async function runChatCompletions(model, instructions, prompt, tools, routes) {
+  const messages = [
+    { role: "system", content: instructions },
+    { role: "user", content: prompt },
+  ];
+  const chatTools = tools.map(({ name, description, parameters }) => ({
+    type: "function",
+    function: { name, description, parameters },
+  }));
+  for (let turn = 0; turn < MAX_TURNS; turn += 1) {
+    const completion = await (await createClient()).chat.completions.create({
+      model,
+      messages,
+      tools: chatTools,
+      tool_choice: "auto",
+    });
+    const message = completion.choices[0]?.message;
+    if (!message) throw new Error("Bedrock returned no chat completion choice");
+    const calls = message.tool_calls || [];
+    if (calls.length === 0) return message.content || "";
+    messages.push({ role: "assistant", content: message.content, tool_calls: calls });
+    const outputs = await Promise.all(calls.map(async (call) => ({
+      role: "tool",
+      tool_call_id: call.id,
+      content: await callMcp(routes, call.function.name, call.function.arguments),
+    })));
+    messages.push(...outputs);
+  }
+  throw new Error(`agent exceeded ${MAX_TURNS} model turns`);
 }
 
 async function run(prompt) {
@@ -79,34 +143,14 @@ async function run(prompt) {
   const instructions = await fs.readFile("/workspace/AGENTS.md", "utf8");
   const { clients, routes, tools } = await connectMcpServers();
   try {
-    let response = await createResponse({ model, instructions, input: prompt, tools, store: true });
-    for (let turn = 0; turn < MAX_TURNS; turn += 1) {
-      const calls = (response.output || []).filter((item) => item.type === "function_call");
-      if (calls.length === 0) return responseText(response);
-
-      const outputs = await Promise.all(calls.map(async (call) => {
-        const route = routes.get(call.name);
-        if (!route) throw new Error(`model requested unknown tool ${call.name}`);
-        const result = await route.client.callTool({
-          name: route.originalName,
-          arguments: JSON.parse(call.arguments || "{}"),
-        });
-        return {
-          type: "function_call_output",
-          call_id: call.call_id,
-          output: JSON.stringify(result.content ?? result),
-        };
-      }));
-      response = await createResponse({
-        model,
-        instructions,
-        previous_response_id: response.id,
-        input: outputs,
-        tools,
-        store: true,
-      });
+    switch (required("BEDROCK_API")) {
+      case "responses":
+        return await runResponses(model, instructions, prompt, tools, routes);
+      case "chatCompletions":
+        return await runChatCompletions(model, instructions, prompt, tools, routes);
+      default:
+        throw new Error(`unsupported BEDROCK_API: ${process.env.BEDROCK_API}`);
     }
-    throw new Error(`agent exceeded ${MAX_TURNS} model turns`);
   } finally {
     await Promise.allSettled(clients.map((client) => client.close()));
   }
