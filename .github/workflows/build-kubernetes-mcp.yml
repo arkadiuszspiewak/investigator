@@ -10,17 +10,12 @@ on:
       - .github/workflows/_build-server.yml
       - .github/workflows/build-kubernetes-mcp.yml
   push:
-    branches: [main]
     tags: [kubernetes-mcp-v*]
-    paths:
-      - servers/kubernetes-mcp/**
-      - crates/mcp-runtime/**
-      - Cargo.toml
-      - Cargo.lock
-      - docker/Dockerfile.server
-      - .github/workflows/_build-server.yml
-      - .github/workflows/build-kubernetes-mcp.yml
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   image:

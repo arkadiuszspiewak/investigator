@@ -9,16 +9,12 @@ on:
       - .github/workflows/_build-app.yml
       - .github/workflows/build-investigator.yml
   push:
-    branches: [main]
     tags: [investigator-v*]
-    paths:
-      - apps/investigator/**
-      - Cargo.toml
-      - Cargo.lock
-      - docker/Dockerfile.app
-      - .github/workflows/_build-app.yml
-      - .github/workflows/build-investigator.yml
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   image:

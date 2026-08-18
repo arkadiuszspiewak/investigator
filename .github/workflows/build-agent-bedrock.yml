@@ -7,13 +7,12 @@ on:
       - .github/workflows/_build-agent.yml
       - .github/workflows/build-agent-bedrock.yml
   push:
-    branches: [main]
     tags: [agent-bedrock-v*]
-    paths:
-      - agents/bedrock/**
-      - .github/workflows/_build-agent.yml
-      - .github/workflows/build-agent-bedrock.yml
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read

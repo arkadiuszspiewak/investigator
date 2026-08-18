@@ -6,12 +6,12 @@ on:
       - charts/investigator-platform/**
       - .github/workflows/release-helm.yml
   push:
-    branches: [main]
     tags: [chart-v*]
-    paths:
-      - charts/investigator-platform/**
-      - .github/workflows/release-helm.yml
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
