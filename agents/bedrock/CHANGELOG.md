@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/arkadiuszspiewak/investigator/compare/agent-bedrock-v1.1.0...agent-bedrock-v1.2.0) (2026-08-19)
+
+
+### Features
+
+* compact reposnses, dedicated job list tool ([#21](https://github.com/arkadiuszspiewak/investigator/issues/21)) ([043e2e9](https://github.com/arkadiuszspiewak/investigator/commit/043e2e980b7610ac51974f40275826d52b4fe9ab))
+
 ## [1.1.0](https://github.com/arkadiuszspiewak/investigator/compare/agent-bedrock-v1.0.0...agent-bedrock-v1.1.0) (2026-08-18)
 
 
