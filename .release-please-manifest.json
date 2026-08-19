@@ -2,10 +2,10 @@
   "apps/investigator": "1.1.0",
   "apps/investigator-cli": "0.3.4",
   "apps/investigator-alerts": "0.4.4",
-  "servers/kubernetes-mcp": "0.1.2",
+  "servers/kubernetes-mcp": "0.2.0",
   "servers/prometheus-mcp": "0.1.1",
   "servers/alertmanager-mcp": "0.1.1",
-  "charts/investigator-platform": "1.1.0",
+  "charts/investigator-platform": "1.2.0",
   "agents/codex": "1.2.0",
   "agents/bedrock": "1.1.0"
 }
