@@ -83,7 +83,7 @@ impl ToolBase for GetDeployment {
     }
 
     fn description() -> Option<Cow<'static, str>> {
-        Some("Get one Kubernetes deployment by name".into())
+        Some("Get a compact Deployment health summary; prefer over get_resource".into())
     }
 
     fn annotations() -> Option<ToolAnnotations> {

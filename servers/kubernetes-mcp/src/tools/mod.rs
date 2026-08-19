@@ -6,6 +6,7 @@ pub(crate) mod get_pod_logs;
 mod get_resource;
 mod get_resource_usage;
 mod get_statefulset;
+mod jobs;
 mod list_events;
 mod list_namespaces;
 pub(crate) mod list_pods;
@@ -21,6 +22,7 @@ use get_pod_logs::GetPodLogs;
 use get_resource::GetResource;
 use get_resource_usage::GetResourceUsage;
 use get_statefulset::GetStatefulSet;
+use jobs::{GetJob, ListJobs};
 use list_events::ListEvents;
 use list_namespaces::ListNamespaces;
 use list_pods::ListPods;
@@ -35,6 +37,8 @@ pub fn router() -> ToolRouter<KubernetesServer> {
         .with_async_tool::<ListEvents>()
         .with_async_tool::<GetDeployment>()
         .with_async_tool::<GetStatefulSet>()
+        .with_async_tool::<GetJob>()
+        .with_async_tool::<ListJobs>()
         .with_async_tool::<GetResource>()
         .with_async_tool::<ListResource>()
         .with_async_tool::<GetCrd>()
@@ -66,12 +70,14 @@ mod tests {
             [
                 "get_crd",
                 "get_deployment",
+                "get_job",
                 "get_pod",
                 "get_pod_logs",
                 "get_resource",
                 "get_resource_usage",
                 "get_statefulset",
                 "list_events",
+                "list_jobs",
                 "list_namespaces",
                 "list_pods",
                 "list_resource",

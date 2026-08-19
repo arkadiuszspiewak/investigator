@@ -153,7 +153,7 @@ impl ToolBase for ListPods {
     }
 
     fn description() -> Option<Cow<'static, str>> {
-        Some("List Kubernetes pods in a namespace".into())
+        Some("List compact Pod summaries in a namespace; prefer over list_resource for Pods".into())
     }
 
     fn annotations() -> Option<ToolAnnotations> {

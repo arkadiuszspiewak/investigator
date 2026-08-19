@@ -121,7 +121,7 @@ impl ToolBase for ListEvents {
     }
 
     fn description() -> Option<Cow<'static, str>> {
-        Some("List a page of Kubernetes events in one namespace or explicitly across all".into())
+        Some("List compact Event summaries; prefer over list_resource for Events".into())
     }
 
     fn annotations() -> Option<ToolAnnotations> {
