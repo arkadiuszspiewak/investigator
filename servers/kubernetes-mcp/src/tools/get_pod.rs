@@ -9,13 +9,16 @@ use rmcp::{
 
 use crate::{error::AppError, server::KubernetesServer};
 
-use super::common::{GetNamespacedArgs, ResourceOutput, read_only_annotations, to_resource};
+use super::{
+    common::{GetNamespacedArgs, read_only_annotations},
+    list_pods::PodSummary,
+};
 
 pub struct GetPod;
 
 impl ToolBase for GetPod {
     type Parameter = GetNamespacedArgs;
-    type Output = ResourceOutput;
+    type Output = PodSummary;
     type Error = AppError;
 
     fn name() -> Cow<'static, str> {
@@ -37,6 +40,6 @@ impl AsyncTool<KubernetesServer> for GetPod {
         args: Self::Parameter,
     ) -> Result<Self::Output, Self::Error> {
         let pods: Api<Pod> = Api::namespaced(server.client(), &args.namespace);
-        to_resource(pods.get(&args.name).await?)
+        Ok(PodSummary::from(pods.get(&args.name).await?))
     }
 }

@@ -8,7 +8,7 @@ mod get_resource_usage;
 mod get_statefulset;
 mod list_events;
 mod list_namespaces;
-mod list_pods;
+pub(crate) mod list_pods;
 mod list_resource;
 
 use rmcp::handler::server::router::tool::ToolRouter;

@@ -6,19 +6,32 @@ use rmcp::{
     handler::server::router::tool::{AsyncTool, ToolBase},
     model::ToolAnnotations,
 };
-use serde_json::to_value;
+use schemars::JsonSchema;
+use serde::Serialize;
 
 use crate::{error::AppError, server::KubernetesServer};
 
-use super::common::{
-    LabelSelectorArgs, ResourceListOutput, paginated_params, read_only_annotations,
-};
+use super::common::{LabelSelectorArgs, paginated_params, read_only_annotations};
 
 pub struct ListNamespaces;
 
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct NamespaceSummary {
+    name: Option<String>,
+    phase: Option<String>,
+    created_at: Option<String>,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct ListNamespacesOutput {
+    namespaces: Vec<NamespaceSummary>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    next_continue_token: Option<String>,
+}
+
 impl ToolBase for ListNamespaces {
     type Parameter = LabelSelectorArgs;
-    type Output = ResourceListOutput;
+    type Output = ListNamespacesOutput;
     type Error = AppError;
 
     fn name() -> Cow<'static, str> {
@@ -46,13 +59,20 @@ impl AsyncTool<KubernetesServer> for ListNamespaces {
         }
         let page = namespaces.list(&params).await?;
         let next_continue_token = page.metadata.continue_;
-        let resources = page
+        let namespaces = page
             .items
             .into_iter()
-            .map(to_value)
-            .collect::<Result<_, _>>()?;
-        Ok(ResourceListOutput {
-            resources,
+            .map(|namespace| NamespaceSummary {
+                name: namespace.metadata.name,
+                phase: namespace.status.and_then(|status| status.phase),
+                created_at: namespace
+                    .metadata
+                    .creation_timestamp
+                    .map(|time| time.0.to_string()),
+            })
+            .collect();
+        Ok(ListNamespacesOutput {
+            namespaces,
             next_continue_token,
         })
     }

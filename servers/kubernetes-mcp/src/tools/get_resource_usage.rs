@@ -11,7 +11,6 @@ use rmcp::{
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::to_value;
 
 use crate::{error::AppError, server::KubernetesServer};
 
@@ -56,9 +55,77 @@ pub struct GetResourceUsageArgs {
 #[derive(Debug, Serialize, JsonSchema)]
 pub struct ResourceUsageOutput {
     resource: String,
-    metrics: Vec<serde_json::Value>,
+    metrics: Vec<ResourceUsageSummary>,
     #[serde(skip_serializing_if = "Option::is_none")]
     next_continue_token: Option<String>,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct ResourceUsageSummary {
+    name: Option<String>,
+    namespace: Option<String>,
+    timestamp: Option<String>,
+    window: Option<String>,
+    containers: Vec<ContainerUsageSummary>,
+    usage: Option<UsageSummary>,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct ContainerUsageSummary {
+    name: Option<String>,
+    usage: UsageSummary,
+}
+
+#[derive(Debug, Default, Serialize, JsonSchema)]
+pub struct UsageSummary {
+    cpu: Option<String>,
+    memory: Option<String>,
+}
+
+fn usage_summary(value: &serde_json::Value) -> UsageSummary {
+    UsageSummary {
+        cpu: value
+            .get("cpu")
+            .and_then(|value| value.as_str())
+            .map(str::to_owned),
+        memory: value
+            .get("memory")
+            .and_then(|value| value.as_str())
+            .map(str::to_owned),
+    }
+}
+
+fn summarize_usage(metric: DynamicObject) -> ResourceUsageSummary {
+    let containers = metric
+        .data
+        .get("containers")
+        .and_then(|value| value.as_array())
+        .into_iter()
+        .flatten()
+        .map(|container| ContainerUsageSummary {
+            name: container
+                .get("name")
+                .and_then(|value| value.as_str())
+                .map(str::to_owned),
+            usage: usage_summary(container.get("usage").unwrap_or(&serde_json::Value::Null)),
+        })
+        .collect();
+    ResourceUsageSummary {
+        name: metric.metadata.name,
+        namespace: metric.metadata.namespace,
+        timestamp: metric
+            .data
+            .get("timestamp")
+            .and_then(|value| value.as_str())
+            .map(str::to_owned),
+        window: metric
+            .data
+            .get("window")
+            .and_then(|value| value.as_str())
+            .map(str::to_owned),
+        containers,
+        usage: metric.data.get("usage").map(usage_summary),
+    }
 }
 
 impl ToolBase for GetResourceUsage {
@@ -109,11 +176,7 @@ impl AsyncTool<KubernetesServer> for GetResourceUsage {
         }
         let page = metrics.list(&params).await?;
         let next_continue_token = page.metadata.continue_;
-        let metrics = page
-            .items
-            .into_iter()
-            .map(to_value)
-            .collect::<Result<_, _>>()?;
+        let metrics = page.items.into_iter().map(summarize_usage).collect();
         Ok(ResourceUsageOutput {
             resource: plural.to_owned(),
             metrics,
