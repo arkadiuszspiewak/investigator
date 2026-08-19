@@ -1,6 +1,6 @@
 use kube::{
     Api, Client,
-    api::DynamicObject,
+    api::{DynamicObject, ListParams},
     discovery::{ApiResource, Discovery, Scope, verbs},
 };
 use rmcp::model::ToolAnnotations;
@@ -15,6 +15,14 @@ pub struct LabelSelectorArgs {
     /// Optional Kubernetes label selector, such as `app=nginx`.
     #[serde(default)]
     pub label_selector: Option<String>,
+
+    /// Maximum items to return. Defaults to 50 and is capped at 100.
+    #[serde(default)]
+    pub limit: Option<u32>,
+
+    /// Opaque continuation token returned by a previous call.
+    #[serde(default)]
+    pub continue_token: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -26,6 +34,14 @@ pub struct ListNamespacedArgs {
     /// Optional Kubernetes label selector, such as `app=nginx`.
     #[serde(default)]
     pub label_selector: Option<String>,
+
+    /// Maximum items to return. Defaults to 50 and is capped at 100.
+    #[serde(default)]
+    pub limit: Option<u32>,
+
+    /// Opaque continuation token returned by a previous call.
+    #[serde(default)]
+    pub continue_token: Option<String>,
 }
 
 impl Default for ListNamespacedArgs {
@@ -33,6 +49,8 @@ impl Default for ListNamespacedArgs {
         Self {
             namespace: default_namespace(),
             label_selector: None,
+            limit: None,
+            continue_token: None,
         }
     }
 }
@@ -66,6 +84,28 @@ pub struct ResourceOutput {
 pub struct ResourceListOutput {
     #[schemars(with = "Vec<std::collections::BTreeMap<String, serde_json::Value>>")]
     pub resources: Vec<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_continue_token: Option<String>,
+}
+
+pub fn paginated_params(limit: Option<u32>, continue_token: Option<String>) -> ListParams {
+    ListParams {
+        limit: Some(limit.unwrap_or(50).clamp(1, 100)),
+        continue_token,
+        ..Default::default()
+    }
+}
+
+pub fn require_explicit_scope(
+    tool: &'static str,
+    namespace: Option<&str>,
+    all_namespaces: bool,
+) -> Result<(), AppError> {
+    match (namespace, all_namespaces) {
+        (None, false) => Err(AppError::ExplicitAllNamespacesRequired { tool }),
+        (Some(_), true) => Err(AppError::AmbiguousNamespaceScope { tool }),
+        _ => Ok(()),
+    }
 }
 
 pub fn default_namespace() -> String {
@@ -133,6 +173,25 @@ mod tests {
 
         assert_eq!(resource["properties"]["resource"]["type"], "object");
         assert_eq!(list["properties"]["resources"]["items"]["type"], "object");
+    }
+
+    #[test]
+    fn pagination_has_bounded_defaults() {
+        assert_eq!(paginated_params(None, None).limit, Some(50));
+        assert_eq!(paginated_params(Some(0), None).limit, Some(1));
+        assert_eq!(paginated_params(Some(500), None).limit, Some(100));
+        assert_eq!(
+            paginated_params(Some(25), Some("next".to_owned())).continue_token,
+            Some("next".to_owned())
+        );
+    }
+
+    #[test]
+    fn cluster_wide_namespace_scope_must_be_explicit() {
+        assert!(require_explicit_scope("test", Some("default"), false).is_ok());
+        assert!(require_explicit_scope("test", None, true).is_ok());
+        assert!(require_explicit_scope("test", None, false).is_err());
+        assert!(require_explicit_scope("test", Some("default"), true).is_err());
     }
 }
 

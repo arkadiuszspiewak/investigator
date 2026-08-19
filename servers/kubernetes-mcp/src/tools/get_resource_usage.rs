@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use kube::{
     Api,
-    api::{DynamicObject, ListParams},
+    api::DynamicObject,
     core::{ApiResource, GroupVersionKind},
 };
 use rmcp::{
@@ -33,18 +33,32 @@ pub struct GetResourceUsageArgs {
     #[serde(default)]
     resource: UsageResource,
 
-    /// Namespace for pod metrics. Omit to query all namespaces.
+    /// Namespace for pod metrics.
     #[serde(default)]
     namespace: Option<String>,
 
+    /// Must be true to explicitly query pod metrics across all namespaces.
+    #[serde(default)]
+    all_namespaces: bool,
+
     #[serde(default)]
     label_selector: Option<String>,
+
+    /// Maximum items to return. Defaults to 50 and is capped at 100.
+    #[serde(default)]
+    limit: Option<u32>,
+
+    /// Opaque continuation token returned by a previous call.
+    #[serde(default)]
+    continue_token: Option<String>,
 }
 
 #[derive(Debug, Serialize, JsonSchema)]
 pub struct ResourceUsageOutput {
     resource: String,
     metrics: Vec<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    next_continue_token: Option<String>,
 }
 
 impl ToolBase for GetResourceUsage {
@@ -74,6 +88,13 @@ impl AsyncTool<KubernetesServer> for GetResourceUsage {
             UsageResource::Pods => ("PodMetrics", "pods"),
             UsageResource::Nodes => ("NodeMetrics", "nodes"),
         };
+        if matches!(args.resource, UsageResource::Pods) {
+            super::common::require_explicit_scope(
+                "get_resource_usage",
+                args.namespace.as_deref(),
+                args.all_namespaces,
+            )?;
+        }
         let gvk = GroupVersionKind::gvk("metrics.k8s.io", "v1beta1", kind);
         let api_resource = ApiResource::from_gvk_with_plural(&gvk, plural);
         let metrics: Api<DynamicObject> = match (&args.resource, args.namespace.as_deref()) {
@@ -82,13 +103,13 @@ impl AsyncTool<KubernetesServer> for GetResourceUsage {
             }
             _ => Api::all_with(server.client(), &api_resource),
         };
-        let mut params = ListParams::default();
+        let mut params = super::common::paginated_params(args.limit, args.continue_token);
         if let Some(selector) = args.label_selector.as_deref() {
             params = params.labels(selector);
         }
-        let metrics = metrics
-            .list(&params)
-            .await?
+        let page = metrics.list(&params).await?;
+        let next_continue_token = page.metadata.continue_;
+        let metrics = page
             .items
             .into_iter()
             .map(to_value)
@@ -96,6 +117,7 @@ impl AsyncTool<KubernetesServer> for GetResourceUsage {
         Ok(ResourceUsageOutput {
             resource: plural.to_owned(),
             metrics,
+            next_continue_token,
         })
     }
 }
