@@ -6,6 +6,12 @@ pub enum AppError {
     #[error("{name} must be a positive integer, got {value:?}")]
     InvalidPositiveInteger { name: &'static str, value: String },
 
+    #[error("{tool} requires namespace or explicit all_namespaces=true")]
+    ExplicitAllNamespacesRequired { tool: &'static str },
+
+    #[error("{tool} cannot combine namespace with all_namespaces=true")]
+    AmbiguousNamespaceScope { tool: &'static str },
+
     #[error("Kubernetes request failed: {0}")]
     Kubernetes(#[from] kube::Error),
 

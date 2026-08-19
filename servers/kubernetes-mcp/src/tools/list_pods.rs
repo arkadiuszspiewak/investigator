@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use k8s_openapi::api::core::v1::Pod;
-use kube::{Api, api::ListParams};
+use kube::Api;
 use rmcp::{
     handler::server::router::tool::{AsyncTool, ToolBase},
     model::ToolAnnotations,
@@ -9,7 +9,7 @@ use rmcp::{
 
 use crate::{error::AppError, server::KubernetesServer};
 
-use super::common::{ListNamespacedArgs, read_only_annotations};
+use super::common::{ListNamespacedArgs, paginated_params, read_only_annotations};
 use schemars::JsonSchema;
 use serde::Serialize;
 
@@ -27,6 +27,8 @@ pub struct PodSummary {
 #[derive(Debug, Serialize, JsonSchema)]
 pub struct ListPodsOutput {
     pods: Vec<PodSummary>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    next_continue_token: Option<String>,
 }
 
 impl ToolBase for ListPods {
@@ -53,13 +55,13 @@ impl AsyncTool<KubernetesServer> for ListPods {
         args: Self::Parameter,
     ) -> Result<Self::Output, Self::Error> {
         let pods: Api<Pod> = Api::namespaced(server.client(), &args.namespace);
-        let mut params = ListParams::default();
+        let mut params = paginated_params(args.limit, args.continue_token);
         if let Some(selector) = args.label_selector.as_deref() {
             params = params.labels(selector);
         }
-        let pods = pods
-            .list(&params)
-            .await?
+        let page = pods.list(&params).await?;
+        let next_continue_token = page.metadata.continue_;
+        let pods = page
             .items
             .into_iter()
             .map(|pod| PodSummary {
@@ -70,6 +72,9 @@ impl AsyncTool<KubernetesServer> for ListPods {
                 node: pod.spec.and_then(|spec| spec.node_name),
             })
             .collect();
-        Ok(ListPodsOutput { pods })
+        Ok(ListPodsOutput {
+            pods,
+            next_continue_token,
+        })
     }
 }
