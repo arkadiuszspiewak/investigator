@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/arkadiuszspiewak/investigator/compare/kubernetes-mcp-v0.2.0...kubernetes-mcp-v0.3.0) (2026-08-19)
+
+
+### Features
+
+* add pagination nad restrict namespace ([#17](https://github.com/arkadiuszspiewak/investigator/issues/17)) ([93ed5f9](https://github.com/arkadiuszspiewak/investigator/commit/93ed5f9eda3de0d8c2890459c6e06f7a94d396b8))
+
 ## [0.2.0](https://github.com/arkadiuszspiewak/investigator/compare/kubernetes-mcp-v0.1.2...kubernetes-mcp-v0.2.0) (2026-08-19)
 
 
