@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/arkadiuszspiewak/investigator/compare/agent-codex-v1.1.0...agent-codex-v1.2.0) (2026-08-19)
+
+
+### Features
+
+* add token tracking to codex agent ([#13](https://github.com/arkadiuszspiewak/investigator/issues/13)) ([22b11d7](https://github.com/arkadiuszspiewak/investigator/commit/22b11d743580155d808298bbdc6d00f943da5448))
+
 ## [1.1.0](https://github.com/arkadiuszspiewak/investigator/compare/agent-codex-v1.0.0...agent-codex-v1.1.0) (2026-08-18)
 
 
