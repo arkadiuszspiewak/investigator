@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/arkadiuszspiewak/investigator/compare/kubernetes-mcp-v0.3.0...kubernetes-mcp-v0.4.0) (2026-08-19)
+
+
+### Features
+
+* return compact kubernetes objects ([#19](https://github.com/arkadiuszspiewak/investigator/issues/19)) ([b0119a6](https://github.com/arkadiuszspiewak/investigator/commit/b0119a6314d1030190520930adb897f2eb10ff40))
+
 ## [0.3.0](https://github.com/arkadiuszspiewak/investigator/compare/kubernetes-mcp-v0.2.0...kubernetes-mcp-v0.3.0) (2026-08-19)
 
 
