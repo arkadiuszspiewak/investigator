@@ -107,6 +107,10 @@ mcpServers:
     port: 8080
     path: /mcp
     stateless: true
+    logLimits:
+      tailLines: 100
+      sinceSeconds: 900
+      maxBytes: 32768
     env: []
     serviceAccount: {create: true, name: "", annotations: {}}
     rbac:

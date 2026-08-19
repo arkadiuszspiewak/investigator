@@ -3,6 +3,9 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum AppError {
+    #[error("{name} must be a positive integer, got {value:?}")]
+    InvalidPositiveInteger { name: &'static str, value: String },
+
     #[error("Kubernetes request failed: {0}")]
     Kubernetes(#[from] kube::Error),
 

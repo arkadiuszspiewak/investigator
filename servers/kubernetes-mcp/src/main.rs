@@ -30,6 +30,7 @@ async fn main() -> std::process::ExitCode {
 }
 
 async fn run() -> Result<(), AppError> {
+    tools::get_pod_logs::LogLimits::from_env()?;
     let client = Client::try_default().await?;
     let server = KubernetesServer::new(client);
     if std::env::args().any(|argument| argument == "--http") {
