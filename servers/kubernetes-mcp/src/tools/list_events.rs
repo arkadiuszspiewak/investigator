@@ -7,12 +7,11 @@ use rmcp::{
     model::ToolAnnotations,
 };
 use schemars::JsonSchema;
-use serde::Deserialize;
-use serde_json::to_value;
+use serde::{Deserialize, Serialize};
 
 use crate::{error::AppError, server::KubernetesServer};
 
-use super::common::{ResourceListOutput, read_only_annotations};
+use super::common::read_only_annotations;
 
 pub struct ListEvents;
 
@@ -38,9 +37,83 @@ pub struct ListEventsArgs {
     continue_token: Option<String>,
 }
 
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct EventSummary {
+    namespace: Option<String>,
+    event_type: Option<String>,
+    reason: Option<String>,
+    action: Option<String>,
+    message: Option<String>,
+    count: Option<i32>,
+    first_seen: Option<String>,
+    last_seen: Option<String>,
+    involved_object_kind: Option<String>,
+    involved_object_namespace: Option<String>,
+    involved_object_name: Option<String>,
+    reporting_component: Option<String>,
+    reporting_instance: Option<String>,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct ListEventsOutput {
+    events: Vec<EventSummary>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    next_continue_token: Option<String>,
+}
+
+impl From<Event> for EventSummary {
+    fn from(event: Event) -> Self {
+        let series_last_seen = event
+            .series
+            .as_ref()
+            .and_then(|series| series.last_observed_time.as_ref())
+            .map(|time| time.0.to_string());
+        Self {
+            namespace: event.metadata.namespace,
+            event_type: event.type_,
+            reason: event.reason,
+            action: event.action,
+            message: event.message,
+            count: event
+                .count
+                .or_else(|| event.series.as_ref().and_then(|series| series.count)),
+            first_seen: event.first_timestamp.map(|time| time.0.to_string()),
+            last_seen: series_last_seen
+                .or_else(|| event.last_timestamp.map(|time| time.0.to_string()))
+                .or_else(|| event.event_time.map(|time| time.0.to_string())),
+            involved_object_kind: event.involved_object.kind,
+            involved_object_namespace: event.involved_object.namespace,
+            involved_object_name: event.involved_object.name,
+            reporting_component: event.reporting_component.or_else(|| {
+                event
+                    .source
+                    .as_ref()
+                    .and_then(|source| source.component.clone())
+            }),
+            reporting_instance: event
+                .reporting_instance
+                .or_else(|| event.source.and_then(|source| source.host)),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn summary_omits_raw_event_metadata() {
+        let summary = serde_json::to_value(EventSummary::from(Event::default())).unwrap();
+        assert!(summary.get("metadata").is_none());
+        assert!(summary.get("involved_object").is_none());
+        assert!(summary.get("reason").is_some());
+        assert!(summary.get("message").is_some());
+    }
+}
+
 impl ToolBase for ListEvents {
     type Parameter = ListEventsArgs;
-    type Output = ResourceListOutput;
+    type Output = ListEventsOutput;
     type Error = AppError;
 
     fn name() -> Cow<'static, str> {
@@ -76,13 +149,9 @@ impl AsyncTool<KubernetesServer> for ListEvents {
         }
         let page = events.list(&params).await?;
         let next_continue_token = page.metadata.continue_;
-        let resources = page
-            .items
-            .into_iter()
-            .map(to_value)
-            .collect::<Result<_, _>>()?;
-        Ok(ResourceListOutput {
-            resources,
+        let events = page.items.into_iter().map(EventSummary::from).collect();
+        Ok(ListEventsOutput {
+            events,
             next_continue_token,
         })
     }
