@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/arkadiuszspiewak/investigator/compare/chart-v1.1.0...chart-v1.2.0) (2026-08-19)
+
+
+### Features
+
+* add setting for max logs ([#15](https://github.com/arkadiuszspiewak/investigator/issues/15)) ([82ce97c](https://github.com/arkadiuszspiewak/investigator/commit/82ce97cac6ca8ac41f93c1e398637aafe754c0b0))
+
 ## [1.1.0](https://github.com/arkadiuszspiewak/investigator/compare/chart-v1.0.0...chart-v1.1.0) (2026-08-18)
 
 
