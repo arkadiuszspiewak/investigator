@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/arkadiuszspiewak/investigator/compare/kubernetes-mcp-v0.4.0...kubernetes-mcp-v0.5.0) (2026-08-19)
+
+
+### Features
+
+* compact reposnses, dedicated job list tool ([#21](https://github.com/arkadiuszspiewak/investigator/issues/21)) ([043e2e9](https://github.com/arkadiuszspiewak/investigator/commit/043e2e980b7610ac51974f40275826d52b4fe9ab))
+
 ## [0.4.0](https://github.com/arkadiuszspiewak/investigator/compare/kubernetes-mcp-v0.3.0...kubernetes-mcp-v0.4.0) (2026-08-19)
 
 
