@@ -43,7 +43,7 @@ impl ToolBase for GetResource {
     }
 
     fn description() -> Option<Cow<'static, str>> {
-        Some("Get any Kubernetes resource, including custom resources".into())
+        Some("Get one complete Kubernetes object as a fallback when specialized summaries lack required evidence".into())
     }
 
     fn annotations() -> Option<ToolAnnotations> {

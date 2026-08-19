@@ -138,7 +138,7 @@ impl ToolBase for GetResourceUsage {
     }
 
     fn description() -> Option<Cow<'static, str>> {
-        Some("Get pod or node CPU and memory usage from metrics.k8s.io".into())
+        Some("Get compact pod or node CPU and memory summaries; prefer over list_resource".into())
     }
 
     fn annotations() -> Option<ToolAnnotations> {

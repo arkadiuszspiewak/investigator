@@ -90,7 +90,7 @@ impl ToolBase for GetStatefulSet {
     }
 
     fn description() -> Option<Cow<'static, str>> {
-        Some("Get one Kubernetes StatefulSet by name".into())
+        Some("Get a compact StatefulSet health summary; prefer over get_resource".into())
     }
 
     fn annotations() -> Option<ToolAnnotations> {

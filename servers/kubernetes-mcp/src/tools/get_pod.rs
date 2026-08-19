@@ -26,7 +26,7 @@ impl ToolBase for GetPod {
     }
 
     fn description() -> Option<Cow<'static, str>> {
-        Some("Get one Kubernetes pod by name".into())
+        Some("Get a compact diagnostic Pod summary; prefer over get_resource for Pods".into())
     }
 
     fn annotations() -> Option<ToolAnnotations> {
