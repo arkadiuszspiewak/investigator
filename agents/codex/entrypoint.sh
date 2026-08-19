@@ -10,4 +10,8 @@ if [ -n "${INVESTIGATOR_MCP_SERVERS:-}" ]; then
   done
 fi
 
+if [ "${1:-}" = "exec" ]; then
+  exec node /opt/investigator/runner.mjs "$@"
+fi
+
 exec codex "$@"
