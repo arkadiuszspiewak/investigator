@@ -11,6 +11,7 @@ RUN npm install --global "@openai/codex@${CODEX_VERSION}" \
     && install --directory --mode=0555 /workspace
 
 COPY --chmod=0755 agents/codex/entrypoint.sh /usr/local/bin/investigator-agent
+COPY --chown=0:0 --chmod=0555 agents/codex/runner.mjs /opt/investigator/runner.mjs
 COPY --chown=0:0 --chmod=0444 agents/codex/AGENTS.md /workspace/AGENTS.md
 
 USER 65532:65532
