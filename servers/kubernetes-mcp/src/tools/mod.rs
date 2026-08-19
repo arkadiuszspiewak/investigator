@@ -2,7 +2,7 @@ mod common;
 mod get_crd;
 mod get_deployment;
 mod get_pod;
-mod get_pod_logs;
+pub(crate) mod get_pod_logs;
 mod get_resource;
 mod get_resource_usage;
 mod get_statefulset;

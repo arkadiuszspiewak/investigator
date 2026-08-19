@@ -80,6 +80,14 @@ spec:
               value: {{ $server.stateless | quote }}
             - name: MCP_ALLOWED_HOSTS
               value: {{ printf "%s,%s:%v,%s.%s,%s.%s.svc,%s.%s.svc.cluster.local" $serverName $serverName $server.port $serverName $root.Release.Namespace $serverName $root.Release.Namespace $serverName $root.Release.Namespace | quote }}
+            {{- if eq $name "kubernetes" }}
+            - name: KUBERNETES_MCP_LOG_TAIL_LINES
+              value: {{ $server.logLimits.tailLines | quote }}
+            - name: KUBERNETES_MCP_LOG_SINCE_SECONDS
+              value: {{ $server.logLimits.sinceSeconds | quote }}
+            - name: KUBERNETES_MCP_LOG_MAX_BYTES
+              value: {{ $server.logLimits.maxBytes | quote }}
+            {{- end }}
             {{- with $server.env }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
